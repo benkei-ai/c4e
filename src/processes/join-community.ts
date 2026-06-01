@@ -244,29 +244,68 @@ export const joinCommunityProcess: ProcessTemplate = {
         params: {
           collectRef: 'data.collect',
           email: {
-            subject: '{{inviterName}} te invita a unirte a la comunidad c4e',
+            subject:
+              '{{inviterName}} te invita a Chain4Economy (c4e) como miembro',
             html: [
               '<p>Hola {{recipientName}},</p>',
-              '<p><strong>{{inviterName}}</strong> te ha invitado a unirte a la comunidad <strong>c4e</strong>.</p>',
-              '<p>c4e está construida sobre Benkei: cada miembro tiene su propio agente de IA, accesible desde Telegram, que le ayuda a conocer la comunidad y a encontrar a las personas adecuadas.</p>',
-              '<p>Para aceptar la invitación, elige tu contraseña y entra aquí:</p>',
-              '<p><a href="{{inviteUrl}}">{{inviteUrl}}</a></p>',
-              '<p>En cuanto entres, tu agente personal estará listo automáticamente.</p>',
-              '<p>— El equipo de {{inviterName}}</p>',
+              '<p><strong>{{inviterName}}</strong> te ha invitado a unirte como ' +
+                'miembro a <strong>Chain4Economy (c4e)</strong> — una ' +
+                'comunidad internacional de personas que construyen ' +
+                'alternativas reales en energía, economía regenerativa, ' +
+                'finanzas descentralizadas y Web3.</p>',
+              '<h3 style="margin:1.2em 0 0.3em 0">Lo que recibes al unirte</h3>',
+              '<ul>',
+              '<li><strong>Tu propio agente personal de IA</strong> en c4e — un ' +
+                'asistente privado que mantiene tu perfil y te ayuda a ' +
+                'encontrar a las personas adecuadas dentro de la comunidad.</li>',
+              '<li><strong>Discovery cruzado</strong> con el resto de miembros: ' +
+                'qué hacen, qué ofrecen, qué buscan, en qué proyectos están.</li>',
+              '<li><strong>Acceso desde web y, próximamente, Telegram</strong> ' +
+                '— tu agente te acompaña por el canal que prefieras.</li>',
+              '</ul>',
+              '<h3 style="margin:1.2em 0 0.3em 0">Cómo empezar</h3>',
+              '<ol>',
+              '<li>Haz clic en este enlace y elige tu contraseña:<br>' +
+                '<a href="{{inviteUrl}}">{{inviteUrl}}</a></li>',
+              '<li>Tu agente te recibirá con una <strong>breve entrevista de ' +
+                '6 pasos</strong> (nombre, enlaces, qué haces, qué ofreces, ' +
+                'qué buscas) para organizar tu perfil en la comunidad.</li>',
+              '<li>A partir de ahí podrás explorar a los demás miembros y ' +
+                'conectar.</li>',
+              '</ol>',
+              '<p style="margin-top:1.5em">Si tienes dudas, responde ' +
+                'directamente a este email.</p>',
+              '<p>— {{inviterName}} y el equipo de Chain4Economy</p>',
             ].join('\n'),
             text: [
               'Hola {{recipientName}},',
               '',
-              '{{inviterName}} te ha invitado a unirte a la comunidad c4e.',
+              '{{inviterName}} te ha invitado a unirte como miembro a',
+              'Chain4Economy (c4e) — una comunidad internacional de personas',
+              'que construyen alternativas reales en energía, economía',
+              'regenerativa, finanzas descentralizadas y Web3.',
               '',
-              'c4e está construida sobre Benkei: cada miembro tiene su propio agente de IA, accesible desde Telegram, que le ayuda a conocer la comunidad y a encontrar a las personas adecuadas.',
+              'Lo que recibes al unirte:',
+              '  • Tu propio agente personal de IA en c4e — un asistente',
+              '    privado que mantiene tu perfil y te ayuda a encontrar a',
+              '    las personas adecuadas dentro de la comunidad.',
+              '  • Discovery cruzado con el resto de miembros: qué hacen,',
+              '    qué ofrecen, qué buscan, en qué proyectos están.',
+              '  • Acceso desde web y, próximamente, Telegram — tu agente',
+              '    te acompaña por el canal que prefieras.',
               '',
-              'Para aceptar la invitación, elige tu contraseña y entra aquí:',
-              '{{inviteUrl}}',
+              'Cómo empezar:',
+              '  1. Haz clic en este enlace y elige tu contraseña:',
+              '     {{inviteUrl}}',
+              '  2. Tu agente te recibirá con una breve entrevista de 6',
+              '     pasos (nombre, enlaces, qué haces, qué ofreces, qué',
+              '     buscas) para organizar tu perfil en la comunidad.',
+              '  3. A partir de ahí podrás explorar a los demás miembros y',
+              '     conectar.',
               '',
-              'En cuanto entres, tu agente personal estará listo automáticamente.',
+              'Si tienes dudas, responde directamente a este email.',
               '',
-              '— El equipo de {{inviterName}}',
+              '— {{inviterName}} y el equipo de Chain4Economy',
             ].join('\n'),
           },
         },
