@@ -1,0 +1,357 @@
+/**
+ * `join-community` — the c4e-members catalog's onboarding process for a new
+ * community member.
+ *
+ * Mirrors `@benkei-templates/people`'s `join-team` shape (collect → research
+ * → invite → wait-first-login → create-agent) but:
+ *
+ *   - the lexicon is community-oriented ("member", "community"), and
+ *   - the `collect` schema requires a Telegram handle (community members
+ *     reach c4e primarily through the shared Telegram bot, so the handle is
+ *     not optional — it is what connects the human to their agent).
+ *
+ * Agent creation is deferred until the invitee actually signs in — same
+ * rationale as `join-team`: an abandoned onboarding leaves only a cheap user
+ * row + invitation row, never an orphan agent.
+ *
+ * The orchestrator-side inline actions used here
+ * (`invite_team_member`, `wait_external`, `create_subagent_for_user`) are
+ * the same ones `join-team` consumes; they are defined in
+ * `apps/agents-app/server/foundation/process-engine.ts`. The Telegram handle
+ * rides through `data.collect.telegramHandle` and is written into the new
+ * member agent's `telegram` namespace by `create_subagent_for_user` as part
+ * of the staging commit.
+ */
+
+import type { ProcessTemplate } from '@benkei-ai/core';
+import { z } from 'zod';
+
+/**
+ * The `collect` contract. The agent fills it turn-by-turn via
+ * `update_process_data`; the run advances when the whole object validates.
+ *
+ * `telegramHandle` is `.nullable()` rather than `.optional()` so the key is
+ * REQUIRED in the JSON. Null means "the member explicitly declined to
+ * share a handle"; the orchestrator does NOT fall back silently — it MUST
+ * ask. (Same defensive pattern used by `join-team` for `linkedinUrl`,
+ * 2026-05-20.)
+ */
+const JOIN_COMMUNITY_COLLECT_SCHEMA = z
+  .object({
+    name: z.string().min(1).describe('Full name of the new community member'),
+    email: z.string().email().describe('Email — also their login email'),
+    headline: z
+      .string()
+      .min(1)
+      .describe(
+        'One-line headline that captures what the member does (free text, e.g. "Avalanche L1 builder", "Sustainable energy researcher")',
+      ),
+    telegramHandle: z
+      .string()
+      .nullable()
+      .describe(
+        'Telegram handle including the leading @ (e.g. "@alice"). Set to null only if the member explicitly declined to share one.',
+      ),
+    linkedinUrl: z
+      .string()
+      .url()
+      .nullable()
+      .describe('LinkedIn profile URL — set to null if the member has no LinkedIn'),
+    offering: z
+      .string()
+      .optional()
+      .describe('Short description of what the member can offer the community'),
+    lookingFor: z
+      .string()
+      .optional()
+      .describe('Short description of what the member is looking for in the community'),
+    description: z.string().optional().describe('Short free-text description'),
+  })
+  .passthrough();
+
+const INVITE_RESULT_SCHEMA = z
+  .object({
+    userId: z.string().min(1),
+    inviteToken: z.string().min(1),
+    inviteUrl: z.string().min(1),
+    delivered: z.boolean(),
+    messageId: z.string().nullable(),
+  })
+  .passthrough();
+
+const WAIT_RESULT_SCHEMA = z
+  .object({
+    firstLogin: z.boolean().optional(),
+    at: z.string().optional(),
+    userId: z.string().optional(),
+  })
+  .passthrough();
+
+const CREATE_AGENT_RESULT_SCHEMA = z
+  .object({
+    newAgentId: z.string().min(1),
+    name: z.string().min(1),
+  })
+  .passthrough();
+
+function buildJoinCommunityCollectPrompt(): string {
+  return [
+    'Collect the following information from the user about the new community',
+    'member who is being invited to c4e:',
+    '',
+    '1. name             — Full name (required)',
+    '2. email            — Email (required); this is also their login email',
+    '3. headline         — One-line "what they do" (required); free text',
+    '4. telegramHandle   — Telegram handle starting with @ (REQUIRED — see',
+    '                      below); null if the member explicitly declined',
+    '5. linkedinUrl      — LinkedIn profile URL (REQUIRED — see below);',
+    '                      null if the member explicitly declined',
+    '6. offering         — What can they offer the community (optional)',
+    '7. lookingFor       — What are they looking for in the community (optional)',
+    '8. description      — Free-text description (optional)',
+    '',
+    'CRITICAL — read carefully before you do anything:',
+    '',
+    'The system advances to the next step the moment the contract validates.',
+    'The contract requires name + email + headline + telegramHandle +',
+    'linkedinUrl all be present (telegramHandle and linkedinUrl may be the',
+    'literal value `null`). If you call update_process_data with only',
+    'name+email+headline, the schema rejects your call and the engine stays',
+    'on this step — that is the desired behaviour, NOT an error.',
+    '',
+    'STEP-BY-STEP — exactly what to do:',
+    '',
+    '1. Read the user\'s initial message. Extract whatever they volunteered.',
+    '',
+    '2. Identify which of {name, email, headline, telegramHandle,',
+    '   linkedinUrl} are still missing. telegramHandle counts as "missing"',
+    '   if the user did NOT mention Telegram at all, even if they gave the',
+    '   other four.',
+    '',
+    '3. If any of those five are missing, ASK the user for them — one short',
+    '   message, list them clearly. For Telegram, ask explicitly: "¿cuál es',
+    '   su handle de Telegram?" — and accept "no tiene" / "no usa Telegram"',
+    '   as a valid answer (you will encode that as telegramHandle: null).',
+    '   Same pattern for LinkedIn.',
+    '',
+    '4. DO NOT call update_process_data until the user has answered about',
+    '   BOTH Telegram and LinkedIn (handle/URL or explicit "no"). Calling',
+    '   it sooner satisfies an incomplete contract and locks the missing',
+    '   fields out forever.',
+    '',
+    '5. Once the user has answered all required fields, call',
+    '   update_process_data ONCE with the full payload:',
+    '     update_process_data({ data: {',
+    '       name: "...",',
+    '       email: "...",',
+    '       headline: "...",',
+    '       telegramHandle: "@..." OR null,',
+    '       linkedinUrl: "https://..." OR null,',
+    '       offering: "..." OR omit,',
+    '       lookingFor: "..." OR omit,',
+    '       description: "..." OR omit',
+    '     } })',
+    '',
+    '6. After the call lands, send ONE short confirmation acknowledging what',
+    '   was registered (e.g. "Registrado. Continúo con el alta.") and stop.',
+    '   The orchestrator takes over: it will research the member publicly,',
+    '   send them an invitation email, and create their member agent on',
+    '   first sign-in.',
+    '',
+    '7. If the user types something like "adelante" or "sí" between steps,',
+    '   treat it as a no-op — the system is already advancing.',
+    '',
+    'DO NOT ask "shall I continue?" or "do you want me to proceed?". The',
+    'system handles the handoff on its own once the schema is satisfied.',
+  ].join('\n');
+}
+
+/** The full `join-community` process template. */
+export const joinCommunityProcess: ProcessTemplate = {
+  slug: 'join-community',
+  version: '0.1.0',
+  metadata: {
+    pluginSlug: 'onboarding',
+    launchable: true,
+    primary: true,
+    headerLabel: 'Invite a community member',
+    help:
+      'Onboard a new c4e community member: collect their details ' +
+      '(including their Telegram handle), research them publicly, send ' +
+      'the invitation email, and create their member agent the moment ' +
+      'they sign in for the first time.',
+    launchIcon: 'user-round-plus',
+    instructions:
+      'Tell me about the new community member: full name, email, a ' +
+      'one-line "what they do" headline, their Telegram handle (key — c4e ' +
+      'is Telegram-first), and a LinkedIn URL if available.',
+    fields: [
+      { key: 'name', label: 'Full name', icon: 'user', required: true, step: 'collect' },
+      { key: 'email', label: 'Email', icon: 'mail', required: true, step: 'collect' },
+      { key: 'headline', label: 'Headline', icon: 'briefcase', required: true, step: 'collect' },
+      { key: 'telegramHandle', label: 'Telegram', icon: 'send', required: true, step: 'collect' },
+      { key: 'linkedinUrl', label: 'LinkedIn', icon: 'linkedin', step: 'collect' },
+      { key: 'offering', label: 'Offers', icon: 'gift', step: 'collect' },
+      { key: 'lookingFor', label: 'Looking for', icon: 'search', step: 'collect' },
+      { key: 'description', label: 'Description', icon: 'file-text', step: 'collect' },
+    ],
+  },
+  trigger: { initiator: { type: 'self' } },
+  nodes: [
+    {
+      id: 'collect',
+      type: 'llm',
+      prompt: buildJoinCommunityCollectPrompt(),
+      produces: {
+        schema: JOIN_COMMUNITY_COLLECT_SCHEMA,
+        path: 'collect',
+        policy: 'sticky',
+        partialOk: true,
+      },
+    },
+    {
+      id: 'research',
+      type: 'action',
+      executor: 'inline',
+      config: {
+        action: 'web_research',
+        params: {
+          query:
+            'Build a public profile of this new c4e community member, ' +
+            'focusing on: what they do, what projects they have shipped, ' +
+            'their interests, communities they participate in, their ' +
+            'public writing or talks.\n' +
+            'Collected identifiers: {{data.collect.name}} ' +
+            '{{data.collect.email}} {{data.collect.linkedinUrl}} ' +
+            '{{data.collect.telegramHandle}}',
+          focus:
+            'what they do, projects, interests, communities, public writing',
+          stagingPath: 'wiki/knowledge/profile/research.md',
+        },
+      },
+      produces: {
+        schema: z.object({ research: z.string().min(20) }).passthrough(),
+        path: 'research',
+        policy: 'sticky',
+      },
+    },
+    {
+      id: 'invite',
+      type: 'action',
+      executor: 'inline',
+      config: {
+        action: 'invite_team_member',
+        params: {
+          collectRef: 'data.collect',
+          email: {
+            subject: '{{inviterName}} te invita a unirte a la comunidad c4e',
+            html: [
+              '<p>Hola {{recipientName}},</p>',
+              '<p><strong>{{inviterName}}</strong> te ha invitado a unirte a la comunidad <strong>c4e</strong>.</p>',
+              '<p>c4e está construida sobre Benkei: cada miembro tiene su propio agente de IA, accesible desde Telegram, que le ayuda a conocer la comunidad y a encontrar a las personas adecuadas.</p>',
+              '<p>Para aceptar la invitación, elige tu contraseña y entra aquí:</p>',
+              '<p><a href="{{inviteUrl}}">{{inviteUrl}}</a></p>',
+              '<p>En cuanto entres, tu agente personal estará listo automáticamente.</p>',
+              '<p>— El equipo de {{inviterName}}</p>',
+            ].join('\n'),
+            text: [
+              'Hola {{recipientName}},',
+              '',
+              '{{inviterName}} te ha invitado a unirte a la comunidad c4e.',
+              '',
+              'c4e está construida sobre Benkei: cada miembro tiene su propio agente de IA, accesible desde Telegram, que le ayuda a conocer la comunidad y a encontrar a las personas adecuadas.',
+              '',
+              'Para aceptar la invitación, elige tu contraseña y entra aquí:',
+              '{{inviteUrl}}',
+              '',
+              'En cuanto entres, tu agente personal estará listo automáticamente.',
+              '',
+              '— El equipo de {{inviterName}}',
+            ].join('\n'),
+          },
+        },
+      },
+      produces: {
+        schema: INVITE_RESULT_SCHEMA,
+        path: 'invite',
+        policy: 'sticky',
+      },
+    },
+    {
+      id: 'wait-first-login',
+      type: 'action',
+      executor: 'inline',
+      config: {
+        action: 'wait_external',
+        params: { reason: 'firstLogin' },
+      },
+      produces: {
+        schema: WAIT_RESULT_SCHEMA,
+        path: 'firstLogin',
+        policy: 'sticky',
+      },
+    },
+    {
+      id: 'create-agent',
+      type: 'action',
+      executor: 'inline',
+      config: {
+        action: 'create_subagent_for_user',
+        params: {
+          childSlug: 'member',
+          collectRef: 'data.collect',
+          commitStaging: true,
+        },
+      },
+      produces: {
+        schema: CREATE_AGENT_RESULT_SCHEMA,
+        path: 'createAgent',
+        policy: 'sticky',
+      },
+    },
+  ],
+  edges: [
+    { from: 'collect', to: 'research' },
+    { from: 'research', to: 'invite' },
+    { from: 'invite', to: 'wait-first-login' },
+    { from: 'wait-first-login', to: 'create-agent' },
+  ],
+  // F-block — group the five runtime nodes into four user-visible phases.
+  // Without this, `OnboardPanel` self-gates on `blocks.length > 0` and
+  // renders only the header (no step rail, no per-step form). Mirrors the
+  // shape `join-team` ships.
+  blocks: [
+    {
+      id: 'collect-details',
+      label: 'Collect details',
+      nodeIds: ['collect'],
+      icon: 'user-pen',
+      description:
+        "Gather the member's name, email, headline, Telegram handle, LinkedIn URL and what they offer / are looking for.",
+    },
+    {
+      id: 'research',
+      label: 'Research',
+      nodeIds: ['research'],
+      icon: 'search',
+      description:
+        'Public-source research into the member — what they do, projects shipped, interests, communities, public writing.',
+    },
+    {
+      id: 'send-invitation',
+      label: 'Send invitation',
+      nodeIds: ['invite', 'wait-first-login'],
+      icon: 'mail',
+      description:
+        'Create the user row + invitation token, send the email, and wait for them to sign in.',
+    },
+    {
+      id: 'set-up-agent',
+      label: 'Create member agent',
+      nodeIds: ['create-agent'],
+      icon: 'rocket',
+      description:
+        "Mint the new member's `member` agent and commit the staged research into its wiki.",
+    },
+  ],
+};

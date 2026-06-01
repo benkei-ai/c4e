@@ -1,0 +1,53 @@
+{
+  "name": "@cryptobenkei/c4e",
+  "version": "0.1.0",
+  "description": "c4e agent-template catalog — the Members manager and per-member agent for the c4e community. Each member has their own dedicated agent, reached primarily through the c4e Telegram bot. Ships the `join-community` invite flow and the `user-interview` self-onboarding workflow.",
+  "keywords": [
+    "benkei",
+    "ai",
+    "agents",
+    "templates",
+    "c4e",
+    "community",
+    "members"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benkei-ai/c4e.git"
+  },
+  "homepage": "https://github.com/benkei-ai/c4e#readme",
+  "bugs": "https://github.com/benkei-ai/c4e/issues",
+  "author": "benkei-ai",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "viz": "bunx @benkei-ai/cli@latest admin --template ./dist/index.js --open"
+  },
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "@benkei-ai/core": "^0.2.0"
+  },
+  "devDependencies": {
+    "@benkei-ai/core": "link:../benkei-agent-core/packages/core",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  },
+  "license": "ISC"
+}
