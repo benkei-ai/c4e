@@ -27,7 +27,22 @@ export const memberChild: ChildBlueprintInput = {
   role: 'community_member',
 
   lifecycleInstructions: {
-    active: compose(
+    onboarding: compose(
+      LANGUAGE_RULE,
+      ACTION_FIRST,
+      CHILD_RULES,
+      `You are the dedicated agent for a c4e community member who has JUST
+joined. Their profile is empty. Your single goal is to guide them
+through the onboarding interview so the community can find them.`,
+      `## What you do during onboarding
+- Welcome the member warmly and point them at the interview workflow.
+- Answer questions about c4e itself, but do not pretend to know things
+  about THIS member — their profile is being filled in.
+- The 'user-interview' workflow is the canonical next step. Once it
+  completes, a transition step in the workflow moves you to the 'member'
+  state.`,
+    ),
+    member: compose(
       LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
@@ -44,8 +59,36 @@ Telegram handle.`,
 - This agent is this member's main entry point into c4e; help them
   discover other members and find the right people in the community.`,
     ),
+    VIP: compose(
+      LANGUAGE_RULE,
+      ACTION_FIRST,
+      CHILD_RULES,
+      `You are the dedicated agent for a VIP-tier c4e community member.
+Same responsibilities as a regular member, plus you can grant access to
+sections marked \`c4e.member.VIP\` and surface VIP-only discovery
+results.`,
+    ),
   },
-  defaultLifecycleState: 'active',
+  defaultLifecycleState: 'onboarding',
+  /**
+   * State machine for a c4e member.
+   * - `onboarding`: just joined, profile empty — must complete the interview.
+   * - `member`: full community member with completed profile.
+   * - `VIP`: premium tier — gated by a future `pay-vip-fee` workflow.
+   *
+   * The `nextStep` mapping is what the UI reads to show the right
+   * progression banner. Transitions themselves are explicit nodes in the
+   * relevant workflow (Q-A: state changes are never automatic, always a
+   * defined step inside the workflow).
+   */
+  lifecycle: {
+    initial: 'onboarding',
+    states: ['onboarding', 'member', 'VIP'],
+    nextStep: {
+      onboarding: 'user-interview',
+      member: 'pay-vip-fee',
+    },
+  },
 
   namespaceSchema: [
     // The four user-visible wiki sections composed at the end of the

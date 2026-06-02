@@ -453,6 +453,39 @@ const organizeStep = {
   },
 };
 
+// Phase 3 (Q-A): the canonical lifecycle transition for a c4e member is an
+// explicit step inside this workflow. Once `organize` has written the four
+// wiki sections, this node moves the agent from `onboarding` → `member`.
+// The foundation validates the target against `blueprint.lifecycle.states`,
+// and the front uses `agent.lifecycle.canonicalNext()` to decide whether the
+// interview banner is shown — which becomes `null` for this agent the
+// moment this step lands.
+const TRANSITION_RESULT_SCHEMA = z
+  .object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+    reason: z.string().min(1),
+  })
+  .passthrough();
+
+const becomeMemberStep = {
+  id: 'become_member',
+  type: 'action' as const,
+  executor: 'inline' as const,
+  config: {
+    action: 'transition_lifecycle',
+    params: {
+      to: 'member',
+      reason: 'user-interview:complete',
+    },
+  },
+  produces: {
+    schema: TRANSITION_RESULT_SCHEMA,
+    path: 'become_member',
+    policy: 'sticky' as const,
+  },
+};
+
 /* ─── template ─────────────────────────────────────────────────────── */
 
 export const userInterviewProcess: ProcessTemplate = {
@@ -512,6 +545,7 @@ export const userInterviewProcess: ProcessTemplate = {
     researchStep,
     composeStep,
     organizeStep,
+    becomeMemberStep,
   ],
 
   edges: [
@@ -523,6 +557,7 @@ export const userInterviewProcess: ProcessTemplate = {
     { from: 'busco',       to: 'research' },
     { from: 'research',    to: 'compose' },
     { from: 'compose',     to: 'organize' },
+    { from: 'organize',    to: 'become_member' },
   ],
 
   // Eight user-visible phases — six interview sections + a single
@@ -590,11 +625,12 @@ export const userInterviewProcess: ProcessTemplate = {
     {
       id: 'organize',
       label: 'Organizar perfil',
-      nodeIds: ['organize'],
+      nodeIds: ['organize', 'become_member'],
       icon: 'layout-dashboard',
       description:
-        'Guardamos las cuatro secciones en la wiki de tu agente y lo ' +
-        'dejamos disponible para discovery.',
+        'Guardamos las cuatro secciones en la wiki de tu agente, lo ' +
+        'dejamos disponible para discovery, y te promovemos de ' +
+        '`onboarding` a `member` — el banner de bienvenida desaparece.',
     },
   ],
 };
