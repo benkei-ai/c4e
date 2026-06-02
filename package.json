@@ -36,7 +36,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "viz": "bunx @benkei-ai/cli@latest admin --template ./dist/index.js --open"
+    "viz": "node ../benkei-agent-core/packages/cli/dist/cli.js admin --template ./dist/index.js --open"
   },
   "dependencies": {
     "zod": "^3.23.0"

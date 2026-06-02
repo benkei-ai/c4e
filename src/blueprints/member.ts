@@ -23,7 +23,7 @@ import {
 /** The c4e community-member blueprint (child of the Members manager). */
 export const memberChild: ChildBlueprintInput = {
   slug: 'member',
-  name: 'New community member',
+  name: 'Club Member',
   role: 'community_member',
 
   lifecycleInstructions: {

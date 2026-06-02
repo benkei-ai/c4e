@@ -31,12 +31,6 @@ export const membersBlueprint: BlueprintContract = defineBlueprint({
   manager: membersManager,
   childTemplates: {
     [MEMBER_SLUG]: memberChild,
-    // Back-compat: agents minted before the cutover carry `childSlug: 'person'`
-    // in their signed manifests (legacy from when @benkei-templates/c4e-members
-    // followed the People-catalog naming). Re-signing the manifests would
-    // invalidate post-quantum DIDs, so we accept the legacy slug as an alias
-    // for `member` here. New agents get MEMBER_SLUG ('member').
-    person: memberChild,
   },
   defaultChildSlug: MEMBER_SLUG,
   processes: {
