@@ -19,6 +19,38 @@ import {
   LANGUAGE_RULE,
   compose,
 } from '@benkei-ai/core';
+import { z } from 'zod';
+
+/**
+ * Typed schema for one project a member is working on. Drives the deterministic
+ * "Projects" table on the member's dashboard — title is mandatory, summary +
+ * status mandatory for kanban grouping, the rest optional.
+ */
+const ProjectRecordSchema = z
+  .object({
+    title: z.string().min(1),
+    summary: z.string().min(1),
+    status: z.enum(['idea', 'active', 'paused', 'done', 'archived']),
+    budget: z.number().nonnegative().optional(),
+    startedAt: z.string().optional(),
+    endedAt: z.string().optional(),
+    links: z.array(z.string().url()).optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .strict();
+
+/** Typed schema for one entry in a member's work history. */
+const WorkExperienceRecordSchema = z
+  .object({
+    company: z.string().min(1),
+    role: z.string().min(1),
+    start: z.string(),
+    end: z.string().optional(),
+    summary: z.string().optional(),
+    location: z.string().optional(),
+    skills: z.array(z.string()).optional(),
+  })
+  .strict();
 
 /** The c4e community-member blueprint (child of the Members manager). */
 export const memberChild: ChildBlueprintInput = {
@@ -91,12 +123,21 @@ results.`,
   },
 
   namespaceSchema: [
-    // The four user-visible wiki sections composed at the end of the
+    // The user-visible wiki sections composed at the end of the
     // `user-interview` process from interview + research. The interview
     // collects raw data turn-by-turn, the LLM `compose` step weaves each
     // section as enriched markdown narrative drawing on both sources.
     { name: 'profile', kind: 'narrative', label: 'Profile', order: 1 },
-    { name: 'work_experience', kind: 'narrative', label: 'Work experience', order: 2 },
+    // Work history is structured: one record per role so a future dashboard
+    // can render a timeline / filter by company / sort by date without
+    // re-parsing prose.
+    {
+      name: 'work_experience',
+      kind: 'record',
+      label: 'Work experience',
+      order: 2,
+      recordSchema: WorkExperienceRecordSchema,
+    },
     { name: 'offering', kind: 'narrative', label: 'Products & Services', order: 3 },
     { name: 'events', kind: 'narrative', label: 'Events', order: 4 },
     // Aux records — written deterministically from interview data, used by
@@ -105,9 +146,16 @@ results.`,
     // narrative sections in the wiki tree.
     { name: 'links', kind: 'record', label: 'Links', order: 5 },
     { name: 'telegram', kind: 'record', label: 'Telegram', order: 6 },
-    // Optional namespaces — not written by the interview, but available
-    // for the member to add over time via wiki edit / agent tools.
-    { name: 'projects', kind: 'narrative', label: 'Projects', order: 7 },
+    // Projects is structured: each row is one project with title/summary/
+    // status/budget so the dashboard can show a portfolio table and a
+    // status kanban. Adds/edits go through `records.upsert`.
+    {
+      name: 'projects',
+      kind: 'record',
+      label: 'Projects',
+      order: 7,
+      recordSchema: ProjectRecordSchema,
+    },
     { name: 'interests', kind: 'narrative', label: 'Interests', order: 8 },
     { name: 'skills', kind: 'record', label: 'Skills', order: 9 },
     { name: 'hobbies', kind: 'narrative', label: 'Hobbies', order: 10 },
@@ -127,6 +175,21 @@ results.`,
     {
       id: 'knowledge.write',
       purpose: "Record updates to this member's profile, offering, looking-for, and projects.",
+      required: true,
+    },
+    {
+      id: 'records.list',
+      purpose: "List structured rows (projects, work history) from this member's record namespaces.",
+      required: true,
+    },
+    {
+      id: 'records.upsert',
+      purpose: 'Add or update a project / work-history entry as a typed row.',
+      required: true,
+    },
+    {
+      id: 'records.delete',
+      purpose: 'Remove a project / work-history row by id.',
       required: true,
     },
     {
