@@ -2,20 +2,21 @@
  * Catalog identity — single source of truth is `package.json`.
  *
  * Lives in its own module so that blueprints and processes can reference
- * `MEMBERS_TEMPLATE` without creating an import cycle through `index.ts`.
+ * the per-bundle template constants without creating an import cycle
+ * through `index.ts`.
  *
  * What this powers:
  *
- *  - `MEMBERS_TEMPLATE` — the template name the orchestrator stores in
- *    `agents.template_ref` when it mints agents from the `members` bundle.
- *    Also used by F-auth gates (`allowedCallerTemplates`) to authorise which
+ *  - `*_TEMPLATE` — the template name the orchestrator stores in
+ *    `agents.template_ref` when it mints agents from a given bundle. Also
+ *    used by F-auth gates (`allowedCallerTemplates`) to authorise which
  *    tenant roots may launch a given process.
  *  - `CATALOG_VERSION` — the bundle version the implementation dashboard
  *    displays. In lockstep with the published npm release.
  *
- * Naming convention: `${pkg.name}/${bundle-slug}`. With one bundle today
- * (`members`) the value is `@cryptobenkei/c4e/members`. Future bundles in
- * this same package would each get their own subpath.
+ * Naming convention: `${pkg.name}/${bundle-slug}`. The catalog currently
+ * ships five bundles — `members`, `projects`, `events`, `governance`,
+ * `treasury` — each registered under its own subpath.
  */
 
 import pkg from '../package.json' with { type: 'json' };
@@ -23,4 +24,8 @@ import pkg from '../package.json' with { type: 'json' };
 const PACKAGE_NAME: string = pkg.name;
 
 export const MEMBERS_TEMPLATE: string = `${PACKAGE_NAME}/members`;
+export const PROJECTS_TEMPLATE: string = `${PACKAGE_NAME}/projects`;
+export const EVENTS_TEMPLATE: string = `${PACKAGE_NAME}/events`;
+export const GOVERNANCE_TEMPLATE: string = `${PACKAGE_NAME}/governance`;
+export const TREASURY_TEMPLATE: string = `${PACKAGE_NAME}/treasury`;
 export const CATALOG_VERSION: string = pkg.version;

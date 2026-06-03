@@ -86,6 +86,78 @@ const BUSCO_SCHEMA = z.object({
   busco: z.string().min(1).describe('Qué busca o necesita ahora'),
 });
 
+/** Version stamp baked into every acceptance record. Bump when text changes
+ *  so existing members can be flagged for re-acceptance if needed. */
+export const C4E_TERMS_VERSION = '1.0.0';
+
+/** Plain-language terms + privacy notice shown in the `terms_acceptance`
+ *  step. HTML so the plugin / chat can render it formatted. Conservative
+ *  draft — Alex will iterate. The LLM also receives this text via the step
+ *  prompt so it can answer questions about it before acceptance. */
+export const C4E_TERMS_AND_CONDITIONS_V1 = [
+  '<h2>Condiciones de Pertenencia a la Comunidad c4e</h2>',
+  '<p><em>Versión 1.0.0 — sujetas a revisión por la comunidad.</em></p>',
+
+  '<h3>1. Qué es c4e</h3>',
+  '<p>c4e es una comunidad de personas que construyen, comparten y colaboran ' +
+  'alrededor de la tecnología, los datos y la infraestructura descentralizada. ' +
+  'Ser miembro implica un compromiso de buena fe con la comunidad: aportar ' +
+  'cuando puedas, pedir ayuda cuando la necesites, y respetar el trabajo de los demás.</p>',
+
+  '<h3>2. Tus datos y tu agente personal</h3>',
+  '<p>Cada miembro tiene un <strong>agente personal</strong> que organiza su ' +
+  'perfil de comunidad. Este agente es tuyo: tú decides qué información guarda, ' +
+  'qué expone al resto de miembros, y puedes pedir su eliminación en cualquier momento.</p>',
+  '<ul>' +
+  '<li><strong>Qué guardamos:</strong> los datos que tú nos das en la entrevista (nombre, ' +
+  'rol, enlaces, qué ofreces, qué buscas) más lo que el agente componga sobre ti a partir ' +
+  'de fuentes públicas (por ejemplo tu LinkedIn).</li>' +
+  '<li><strong>Quién lo ve:</strong> por defecto, el resto de miembros de c4e a través ' +
+  'del directorio de la comunidad. Tú puedes restringirlo desde el agente.</li>' +
+  '<li><strong>Cómo borrarlo:</strong> pidiéndolo al agente o al equipo de c4e; tu wiki ' +
+  'se purga y tu agente se desactiva.</li>' +
+  '</ul>',
+
+  '<h3>3. Lo que se espera de ti</h3>',
+  '<ul>' +
+  '<li>Aporta valor: comparte conocimiento, conecta a otros miembros, ayuda cuando alguien lo pida.</li>' +
+  '<li>Respeta la confidencialidad: lo que se comparte dentro de la comunidad no se ' +
+  'reenvía fuera sin permiso explícito de la persona afectada.</li>' +
+  '<li>Sé honesto sobre tu trayectoria y ofertas. La comunidad funciona porque la información es real.</li>' +
+  '<li>Trata a otros miembros con respeto. Acoso, discriminación o conducta abusiva son motivo de expulsión inmediata.</li>' +
+  '</ul>',
+
+  '<h3>4. Lo que NO hacemos con tus datos</h3>',
+  '<ul>' +
+  '<li>No los vendemos a terceros.</li>' +
+  '<li>No los usamos para publicidad personalizada.</li>' +
+  '<li>No los compartimos con autoridades sin requerimiento legal formal.</li>' +
+  '<li>No entrenamos modelos comerciales de terceros con ellos.</li>' +
+  '</ul>',
+
+  '<h3>5. Modificaciones</h3>',
+  '<p>Si estas condiciones cambian, la comunidad las publica y los miembros ' +
+  'existentes reciben un aviso para re-aceptar. Esta versión, <code>1.0.0</code>, ' +
+  'es la inicial y puede evolucionar con la comunidad.</p>',
+
+  '<h3>6. Cómo aceptar</h3>',
+  '<p>Si estás de acuerdo, escribe <strong>acepto</strong> en el chat. Si tienes dudas, ' +
+  'pregúntale a tu agente — está preparado para responder sobre cualquier punto de este documento ' +
+  'antes de que decidas.</p>',
+].join('\n');
+
+const TERMS_SCHEMA = z.object({
+  accepted: z.literal(true).describe('MUST be true — schema only validates on explicit acceptance'),
+  acceptedAt: z
+    .string()
+    .min(1)
+    .describe('ISO 8601 timestamp of when the user accepted'),
+  termsVersion: z
+    .string()
+    .min(1)
+    .describe(`Version of the terms that were accepted (currently '${C4E_TERMS_VERSION}')`),
+});
+
 /* ─── per-section prompts ─────────────────────────────────────────────
    Each prompt teaches the agent the contract for its step: ask the
    question in Spanish, extract via update_process_data, advance. The
@@ -100,23 +172,28 @@ function buildSectionPrompt(args: {
   payloadShape: string;
   notes?: string[];
 }): string {
-  const { stepNumber, totalSteps, isOpener, question, payloadShape, notes } = args;
-  const opener = isOpener
-    ? [
-        `You are running step ${stepNumber} of ${totalSteps} — the c4e`,
-        'onboarding interview. The member just landed on their personal',
-        'agent. Greet them briefly (one short line), then ask the question',
-        'below. Tone: warm community welcome, not interrogation.',
-      ]
-    : [
-        `You are running step ${stepNumber} of ${totalSteps} of the c4e`,
-        'onboarding interview. Open with a brief acknowledgement of the',
-        "previous answer (one short phrase, e.g. \"Genial.\" / \"Anotado.\")",
-        'then ask the question below.',
-      ];
+  const { stepNumber, totalSteps, question, payloadShape, notes } = args;
+  // v0.7.0: the engine extracts `QUESTION FOR THIS STEP:` from this prompt and
+  // posts it to the chat BEFORE the LLM is called (see
+  // `announceConversationalStep` in process-engine.ts). The LLM must NOT
+  // restate the question — duplication produced the "bot repeats itself" UX
+  // bug. The QUESTION line is therefore engine-only context, NOT a script for
+  // the LLM to recite. The LLM's whole job per turn is: extract → ack → stop.
   const lines: string[] = [
-    ...opener,
+    `You are running step ${stepNumber} of ${totalSteps} of the c4e`,
+    'onboarding interview.',
     '',
+    'IMPORTANT — DO NOT REPEAT THE QUESTION.',
+    'The engine has ALREADY posted the question to the user in this chat',
+    'before invoking you. The user is reading it right now. If you also',
+    'state the question, the chat shows the same prompt twice and the user',
+    'thinks the engine ignored their answer. Do NOT paraphrase the',
+    'question. Do NOT greet. Do NOT preview what comes next.',
+    '',
+    // NOTE: `QUESTION FOR THIS STEP:` is the magic marker the engine parses
+    // (announceConversationalStep regex) to post the question to chat BEFORE
+    // calling you. Treat the line below as engine context — it is already
+    // visible to the user in their chat window above. Do NOT echo it.
     `QUESTION FOR THIS STEP: ${question}`,
     '',
     `PAYLOAD SHAPE: ${payloadShape}`,
@@ -126,23 +203,23 @@ function buildSectionPrompt(args: {
   }
   lines.push(
     '',
-    'STEP-BY-STEP:',
+    'YOUR JOB THIS TURN:',
     '',
-    '1. Speak Spanish unless the user writes in another language.',
-    '2. Ask the question above. Group the section\'s fields into ONE',
-    '   open question — never list them like a form.',
-    '3. Once you have the answer, call `update_process_data` ONCE with',
-    '   the payload for THIS step ONLY. Do NOT include fields from',
-    '   other steps even if the user volunteered them — the engine',
-    '   routes those when their step opens.',
-    '4. After the call lands, send ONE very short confirmation (one',
-    '   phrase, no more) and stop. The engine advances on its own as',
-    '   soon as the schema validates.',
-    '5. If the user pushes back on a required field, explain briefly',
-    '   that it is needed for their community profile, and re-ask once.',
-    '   For optional fields (nullable in the payload), accept `null` /',
-    '   "no tengo" / "skip" and move on.',
-    '6. Do NOT preview the next question; the engine will open it.',
+    '1. Read the user\'s most recent message — it is their answer.',
+    '2. Call `update_process_data` ONCE with the payload for THIS step',
+    '   ONLY. Do NOT include fields from other steps even if the user',
+    '   volunteered them — the engine routes those when their step',
+    '   opens.',
+    '3. Reply with EXACTLY one of: "Anotado.", "Gracias.", or "Listo."',
+    '   Nothing else. No question, no preview, no field-by-field',
+    '   acknowledgement. The engine will open the next step.',
+    '4. ONLY exception: if the user\'s message is NOT an answer (they',
+    '   ask a clarification, push back on a required field, or refuse',
+    '   to provide a nullable one), then: do NOT call `update_process_data`,',
+    '   answer their question in one short sentence in Spanish, and stop.',
+    '   For optional/nullable fields, accept "no tengo" / "skip" / "null"',
+    '   as a valid answer (extract it as `null`).',
+    '5. Speak Spanish unless the user writes in another language.',
   );
   return lines.join('\n');
 }
@@ -180,6 +257,10 @@ const ORGANIZE_RESULT_SCHEMA = z
 const askIdentidadStep = {
   id: 'identidad',
   type: 'llm' as const,
+  // First conversational entry — keeps the agent in `onboarding` for the
+  // duration of the run. Idempotent: the engine skips the write when the
+  // persisted state already matches.
+  enterState: 'onboarding' as const,
   prompt: buildSectionPrompt({
     stepNumber: 1,
     totalSteps: 6,
@@ -468,9 +549,73 @@ const TRANSITION_RESULT_SCHEMA = z
   })
   .passthrough();
 
+/* ─── terms & conditions step (v0.8.0) ──────────────────────────────────
+   Last user-facing step before become_member. The engine posts the T&C
+   text to the chat via the `QUESTION FOR THIS STEP:` marker; the LLM then
+   answers any questions the user has about the document and only calls
+   `update_process_data` when the user explicitly says "acepto". Schema is
+   `accepted: z.literal(true)` — anything else fails validation and the
+   run stays parked here. */
+const acceptTermsStep = {
+  id: 'terms_acceptance',
+  type: 'llm' as const,
+  prompt: [
+    'You are running the final user-facing step of the c4e onboarding interview:',
+    'acceptance of the Community Terms & Conditions.',
+    '',
+    'IMPORTANT — DO NOT REPEAT THE T&C TEXT.',
+    'The engine has ALREADY posted the T&C document to the user in the',
+    'chat above. The user is reading it right now. Do NOT paste the whole',
+    'document again. Do NOT greet. The reference text below is for YOUR',
+    'use when the user asks a clarification question about the terms.',
+    '',
+    'QUESTION FOR THIS STEP:',
+    C4E_TERMS_AND_CONDITIONS_V1,
+    '',
+    'PAYLOAD SHAPE: { accepted: true, acceptedAt: <ISO timestamp>, termsVersion: ' +
+      `'${C4E_TERMS_VERSION}' } — accepted MUST be true; the schema rejects ` +
+      'anything else, so do not even try to record a refusal.',
+    '',
+    'YOUR JOB THIS TURN:',
+    '',
+    '1. Read the user\'s most recent message.',
+    '2. CASE A — explicit acceptance. They write some clear variant of',
+    '   "acepto" / "I accept" / "yes I agree" / "sí, acepto" / etc. (use',
+    '   your judgement — explicit affirmative referring to the terms).',
+    '   → Call `update_process_data` ONCE with:',
+    `      { accepted: true, acceptedAt: <ISO 8601 now>, termsVersion: '${C4E_TERMS_VERSION}' }`,
+    '   Then reply with "Aceptado. Bienvenido a c4e." and STOP.',
+    '3. CASE B — question or clarification about the T&C (e.g. "puedo',
+    '   borrar mis datos?", "quién ve mi perfil?", "qué pasa si rompo',
+    '   las normas?"). → Do NOT call `update_process_data`. Answer in',
+    '   one or two short sentences in Spanish, grounded in the reference',
+    '   text above. End with: "Cuando estés listo, escribe \\"acepto\\"."',
+    '4. CASE C — explicit refusal ("no acepto" / "rechazo"). → Do NOT',
+    '   call `update_process_data`. Reply: "Entiendo. Sin la aceptación',
+    '   no puedo activar tu membresía. Si cambias de opinión, escríbeme',
+    '   \\"acepto\\" cuando quieras." Then stop. The run will stay parked',
+    '   here until the user accepts or the operator cancels it.',
+    '5. CASE D — anything else (off-topic, ambiguous). → Treat as B:',
+    '   redirect gently to the T&C and prompt for acceptance or questions.',
+    '6. Speak Spanish unless the user writes in another language.',
+  ].join('\n'),
+  produces: {
+    schema: TERMS_SCHEMA,
+    path: 'terms_acceptance',
+    policy: 'sticky' as const,
+  },
+};
+
 const becomeMemberStep = {
   id: 'become_member',
   type: 'action' as const,
+  // F16 — terminal lifecycle hop. With `kind:'lifecycle'` on the workflow,
+  // the engine calls `setAgentState({state:'member'})` automatically when
+  // entering this node, which updates `agent_instances.state/label/color`
+  // (the Members dashboard column). The `transition_lifecycle` action that
+  // follows writes `lifecycle.txt` so the foundation runtime also sees it.
+  // Both writes are required — see memory `agent-state-four-sources`.
+  enterState: 'member' as const,
   executor: 'inline' as const,
   config: {
     action: 'transition_lifecycle',
@@ -490,8 +635,20 @@ const becomeMemberStep = {
 
 export const userInterviewProcess: ProcessTemplate = {
   slug: 'user-interview',
-  version: '0.6.0',
+  version: '0.8.0',
   metadata: {
+    // F16 — promoted to a lifecycle workflow so the engine owns the slot and
+    // auto-syncs `agent_instances.state` (the column the Members dashboard
+    // reads) via per-node `enterState`. Before 0.7.0 the workflow relied on
+    // the `transition_lifecycle` action alone, which only wrote `lifecycle.txt`
+    // and left the SQL projection stale — see memory `agent-state-four-sources`.
+    kind: 'lifecycle',
+    states: [
+      { key: 'explorer',   label: 'Explorer',   order: 0, color: '#94a3b8' },
+      { key: 'onboarding', label: 'Onboarding', order: 1, color: '#3b82f6' },
+      { key: 'member',     label: 'Member',     order: 2, color: '#22c55e', terminal: true },
+      { key: 'VIP',        label: 'VIP',        order: 3, color: '#eab308' },
+    ],
     pluginSlug: 'onboarding',
     launchable: true,
     primary: true,
@@ -523,7 +680,13 @@ export const userInterviewProcess: ProcessTemplate = {
       { key: 'trayectoria', label: 'Trayectoria',  icon: 'milestone',                       step: 'trayectoria' },
       { key: 'ofrezco',     label: 'Qué ofrezco',  icon: 'gift',           required: true,  step: 'ofrezco'   },
       { key: 'busco',       label: 'Qué busco',    icon: 'search',         required: true,  step: 'busco'     },
+      { key: 'accepted',    label: 'Acepto T&C',   icon: 'shield-check',   required: true,  step: 'terms_acceptance' },
     ],
+    // v0.8.0 — T&C text exposed at metadata level so the onboarding plugin
+    // (right panel) can render it formatted alongside the chat. Constant
+    // owned by the c4e bundle — change there to update across all members.
+    termsBody: C4E_TERMS_AND_CONDITIONS_V1,
+    termsVersion: C4E_TERMS_VERSION,
     // This process is an INTERVIEW — it organizes the user's existing
     // profile, it doesn't create an agent. Neutral chrome + interview
     // copy prevents the generic "agent created" green banner from lying.
@@ -545,6 +708,7 @@ export const userInterviewProcess: ProcessTemplate = {
     researchStep,
     composeStep,
     organizeStep,
+    acceptTermsStep,
     becomeMemberStep,
   ],
 
@@ -557,7 +721,8 @@ export const userInterviewProcess: ProcessTemplate = {
     { from: 'busco',       to: 'research' },
     { from: 'research',    to: 'compose' },
     { from: 'compose',     to: 'organize' },
-    { from: 'organize',    to: 'become_member' },
+    { from: 'organize',    to: 'terms_acceptance' },
+    { from: 'terms_acceptance', to: 'become_member' },
   ],
 
   // Eight user-visible phases — six interview sections + a single
@@ -625,12 +790,30 @@ export const userInterviewProcess: ProcessTemplate = {
     {
       id: 'organize',
       label: 'Organizar perfil',
-      nodeIds: ['organize', 'become_member'],
+      nodeIds: ['organize'],
       icon: 'layout-dashboard',
       description:
-        'Guardamos las cuatro secciones en la wiki de tu agente, lo ' +
-        'dejamos disponible para discovery, y te promovemos de ' +
-        '`onboarding` a `member` — el banner de bienvenida desaparece.',
+        'Guardamos las cuatro secciones en la wiki de tu agente y lo ' +
+        'dejamos disponible para discovery.',
+    },
+    {
+      id: 'terms_acceptance',
+      label: 'Aceptar T&C',
+      nodeIds: ['terms_acceptance'],
+      icon: 'shield-check',
+      description:
+        'Última parada: lee las condiciones de la comunidad y escribe ' +
+        '"acepto" para confirmar. Puedes preguntar dudas antes — tu ' +
+        'agente las responde con el texto delante.',
+    },
+    {
+      id: 'become_member',
+      label: 'Bienvenida',
+      nodeIds: ['become_member'],
+      icon: 'badge-check',
+      description:
+        'Tras tu aceptación te promovemos de `onboarding` a `member` — ' +
+        'el banner de bienvenida desaparece y entras al directorio.',
     },
   ],
 };
