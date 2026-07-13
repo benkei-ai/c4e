@@ -34,6 +34,7 @@ import type {
 } from '@benkei-ai/core';
 import { toTemplateBundle } from '@benkei-ai/core';
 import { membersBlueprint } from './blueprint.js';
+import { newsBlueprint } from './blueprints-news.js';
 import { eventsBlueprint } from './blueprints-events.js';
 import { governanceBlueprint } from './blueprints-governance.js';
 import { projectsBlueprint } from './blueprints-projects.js';
@@ -43,6 +44,7 @@ import {
   EVENTS_TEMPLATE,
   GOVERNANCE_TEMPLATE,
   MEMBERS_TEMPLATE,
+  NEWS_TEMPLATE,
   PROJECTS_TEMPLATE,
   TREASURY_TEMPLATE,
 } from './catalog-meta.js';
@@ -96,10 +98,15 @@ export {
 export { treasuryManager } from './blueprints/treasury.js';
 export { transactionChild } from './blueprints/transaction.js';
 
+// News (the club's shared feed — manager-only bundle, no minted children).
+export { NEWS_SLUG, newsBlueprint } from './blueprints-news.js';
+export { newsManager } from './blueprints/news.js';
+
 // Catalog identity constants.
 export {
   CATALOG_VERSION,
   EVENTS_TEMPLATE,
+  NEWS_TEMPLATE,
   GOVERNANCE_TEMPLATE,
   MEMBERS_TEMPLATE,
   PROJECTS_TEMPLATE,
@@ -154,6 +161,13 @@ export const treasuryBundle: TemplateBundle = toTemplateBundle(
   treasuryBlueprint,
 );
 
+/** The news blueprint as a runtime `TemplateBundle`. */
+export const newsBundle: TemplateBundle = toTemplateBundle(
+  NEWS_TEMPLATE,
+  CATALOG_VERSION,
+  newsBlueprint,
+);
+
 /** Every bundle in the c4e catalog. */
 export const C4E_TEMPLATE_BUNDLES: TemplateBundle[] = [
   membersBundle,
@@ -161,6 +175,7 @@ export const C4E_TEMPLATE_BUNDLES: TemplateBundle[] = [
   eventsBundle,
   governanceBundle,
   treasuryBundle,
+  newsBundle,
 ];
 
 /** Register the c4e catalog with a running `Benkei` runtime. */

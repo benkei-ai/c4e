@@ -82,6 +82,44 @@ const ReputationRecordSchema = z
   .strict();
 
 /**
+ * Where this copilot got to in the club's shared feed. Exactly ONE row, id
+ * `cursor`. In its turn the copilot reads every signal newer than
+ * `lastProcessedAt` and then moves the mark.
+ *
+ * A cursor, not a "seen" flag per signal: one timestamp per member cannot go
+ * out of sync with a feed that grows, and it survives a signal being deleted.
+ */
+const FeedCursorRecordSchema = z
+  .object({
+    lastProcessedAt: z.string(),
+    /** Signals judged in the last turn — for the dashboard, not for logic. */
+    lastBatchSize: z.number().nonnegative().optional(),
+  })
+  .strict();
+
+/**
+ * One row per signal this member was actually SHOWN, and what they made of it.
+ *
+ * This is where the copilot learns. It is also, aggregated, where reputation
+ * comes from in a later phase: a signal many copilots mark `valuable` earns
+ * the member who shared it a `reputation` signal — without ever revealing WHO
+ * said what, because these rows never leave the copilot.
+ *
+ *   verdict — what the member did with it
+ *   why     — the copilot's reason for showing it (always recorded: a filter
+ *             that cannot explain itself cannot be corrected)
+ */
+const FeedFeedbackRecordSchema = z
+  .object({
+    signalId: z.string().min(1),
+    verdict: z.enum(['valuable', 'neutral', 'dismissed']),
+    why: z.string().optional(),
+    note: z.string().optional(),
+    at: z.string(),
+  })
+  .strict();
+
+/**
  * Local extension that adds the copilot-dashboard `tutorial` field. The
  * foundation `ChildBlueprintInput` does not declare it yet — the orchestrator
  * reads it opaquely from the registered template. When @benkei-ai/core
@@ -261,20 +299,49 @@ results.`,
       recordSchema: ReputationRecordSchema,
     },
 
+    // ── the feed filter (private — never leaves this agent) ───────────────
+    // The member's filter, in prose, written and REWRITTEN by the copilot as
+    // it learns during a reading session ("lower the technical level; avoid
+    // token prices; wants a technical co-founder").
+    //
+    // Deliberately NOT `interests`: that namespace is written by the
+    // onboarding interview (`apply_interview_to_wiki`), which would overwrite
+    // everything the copilot has learned the next time it runs. Same word,
+    // different owner, different lifetime.
+    //
+    // Narrative, not records, because it is a judgement to be read by an LLM,
+    // not rows to be queried. A filter you can only express as tags is a
+    // filter you cannot correct by talking to it.
+    { name: 'feed_profile', kind: 'narrative', label: 'Feed filter', order: 7 },
+    {
+      name: 'feed_state',
+      kind: 'record',
+      label: 'Feed cursor',
+      order: 8,
+      recordSchema: FeedCursorRecordSchema,
+    },
+    {
+      name: 'feed_feedback',
+      kind: 'record',
+      label: 'Feed feedback',
+      order: 9,
+      recordSchema: FeedFeedbackRecordSchema,
+    },
+
     // ── remaining narrative sections ──
     // `interests` now also absorbs the old `hobbies` namespace (one section,
     // less tree sprawl).
-    { name: 'interests', kind: 'narrative', label: 'Interests & hobbies', order: 7 },
+    { name: 'interests', kind: 'narrative', label: 'Interests & hobbies', order: 10 },
     // Relabelled "Events attended" to disambiguate from the Events MANAGER's
     // `calendar` (a different agent): this is what THIS member attended.
-    { name: 'events', kind: 'narrative', label: 'Events attended', order: 8 },
+    { name: 'events', kind: 'narrative', label: 'Events attended', order: 11 },
 
     // ── aux routing sections (written by the interview, narrative-canon) ──
     // `links` and `telegram` are written by `apply_interview_to_wiki` via
     // knowledge.write, so they stay narrative. `telegram` still resolves the
     // member through the c4e Telegram bot (the routing layer reads the section).
-    { name: 'links', kind: 'narrative', label: 'Links', order: 9 },
-    { name: 'telegram', kind: 'narrative', label: 'Telegram', order: 10 },
+    { name: 'links', kind: 'narrative', label: 'Links', order: 12 },
+    { name: 'telegram', kind: 'narrative', label: 'Telegram', order: 13 },
   ],
 
   capabilities: [

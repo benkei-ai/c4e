@@ -15,8 +15,8 @@
  *    displays. In lockstep with the published npm release.
  *
  * Naming convention: `${pkg.name}/${bundle-slug}`. The catalog currently
- * ships five bundles — `members`, `projects`, `events`, `governance`,
- * `treasury` — each registered under its own subpath.
+ * ships six bundles — `members`, `projects`, `events`, `governance`,
+ * `treasury`, `news` — each registered under its own subpath.
  */
 
 import pkg from '../package.json' with { type: 'json' };
@@ -28,4 +28,5 @@ export const PROJECTS_TEMPLATE: string = `${PACKAGE_NAME}/projects`;
 export const EVENTS_TEMPLATE: string = `${PACKAGE_NAME}/events`;
 export const GOVERNANCE_TEMPLATE: string = `${PACKAGE_NAME}/governance`;
 export const TREASURY_TEMPLATE: string = `${PACKAGE_NAME}/treasury`;
+export const NEWS_TEMPLATE: string = `${PACKAGE_NAME}/news`;
 export const CATALOG_VERSION: string = pkg.version;
