@@ -15,7 +15,6 @@ import {
   ACTION_FIRST,
   CHILD_RULES,
   type ChildBlueprintInput,
-  LANGUAGE_RULE,
   compose,
 } from '@benkei-ai/core';
 import { z } from 'zod';
@@ -48,7 +47,6 @@ export const eventChild: ChildBlueprintInput = {
 
   lifecycleInstructions: {
     default: compose(
-      LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
       `You are the dedicated agent for one c4e gathering. You are the
@@ -88,7 +86,7 @@ location, date, follow-ups, and recordings.`,
       order: 3,
       recordSchema: EventAgendaRecordSchema,
     },
-    { name: 'attendees', kind: 'record', label: 'Attendees', order: 4 },
+    { name: 'attendees', kind: 'narrative', label: 'Attendees', order: 4 },
     { name: 'outcome', kind: 'narrative', label: 'Outcome', order: 5 },
   ],
 

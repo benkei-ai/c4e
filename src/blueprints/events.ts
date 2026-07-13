@@ -13,7 +13,6 @@
 
 import {
   ACTION_FIRST,
-  LANGUAGE_RULE,
   type ManagerBlueprintInput,
   compose,
 } from '@benkei-ai/core';
@@ -47,7 +46,6 @@ export const eventsManager: ManagerBlueprintInput = {
   role: 'events_manager',
 
   instructions: compose(
-    LANGUAGE_RULE,
     ACTION_FIRST,
     `You are the Events manager for the c4e community. You oversee every
 gathering the community runs and keep the community's view of its

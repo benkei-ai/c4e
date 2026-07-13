@@ -25,6 +25,7 @@
 
 import type { ProcessTemplate } from '@benkei-ai/core';
 import { z } from 'zod';
+import { buildStrictStepPrompt } from './strict-step.js';
 
 /**
  * The `collect` contract. The agent fills it turn-by-turn via
@@ -95,81 +96,53 @@ const CREATE_AGENT_RESULT_SCHEMA = z
   .passthrough();
 
 function buildJoinCommunityCollectPrompt(): string {
-  return [
-    'Collect the following information from the user about the new community',
-    'member who is being invited to c4e:',
-    '',
-    '1. name             — Full name (required)',
-    '2. email            — Email (required); this is also their login email',
-    '3. headline         — One-line "what they do" (required); free text',
-    '4. telegramHandle   — Telegram handle starting with @ (REQUIRED — see',
-    '                      below); null if the member explicitly declined',
-    '5. linkedinUrl      — LinkedIn profile URL (REQUIRED — see below);',
-    '                      null if the member explicitly declined',
-    '6. offering         — What can they offer the community (optional)',
-    '7. lookingFor       — What are they looking for in the community (optional)',
-    '8. description      — Free-text description (optional)',
-    '',
-    'CRITICAL — read carefully before you do anything:',
-    '',
-    'The system advances to the next step the moment the contract validates.',
-    'The contract requires name + email + headline + telegramHandle +',
-    'linkedinUrl all be present (telegramHandle and linkedinUrl may be the',
-    'literal value `null`). If you call update_process_data with only',
-    'name+email+headline, the schema rejects your call and the engine stays',
-    'on this step — that is the desired behaviour, NOT an error.',
-    '',
-    'STEP-BY-STEP — exactly what to do:',
-    '',
-    '1. Read the user\'s initial message. Extract whatever they volunteered.',
-    '',
-    '2. Identify which of {name, email, headline, telegramHandle,',
-    '   linkedinUrl} are still missing. telegramHandle counts as "missing"',
-    '   if the user did NOT mention Telegram at all, even if they gave the',
-    '   other four.',
-    '',
-    '3. If any of those five are missing, ASK the user for them — one short',
-    '   message, list them clearly. For Telegram, ask explicitly: "¿cuál es',
-    '   su handle de Telegram?" — and accept "no tiene" / "no usa Telegram"',
-    '   as a valid answer (you will encode that as telegramHandle: null).',
-    '   Same pattern for LinkedIn.',
-    '',
-    '4. DO NOT call update_process_data until the user has answered about',
-    '   BOTH Telegram and LinkedIn (handle/URL or explicit "no"). Calling',
-    '   it sooner satisfies an incomplete contract and locks the missing',
-    '   fields out forever.',
-    '',
-    '5. Once the user has answered all required fields, call',
-    '   update_process_data ONCE with the full payload:',
-    '     update_process_data({ data: {',
-    '       name: "...",',
-    '       email: "...",',
-    '       headline: "...",',
-    '       telegramHandle: "@..." OR null,',
-    '       linkedinUrl: "https://..." OR null,',
-    '       offering: "..." OR omit,',
-    '       lookingFor: "..." OR omit,',
-    '       description: "..." OR omit',
-    '     } })',
-    '',
-    '6. After the call lands, send ONE short confirmation acknowledging what',
-    '   was registered (e.g. "Registrado. Continúo con el alta.") and stop.',
-    '   The orchestrator takes over: it will research the member publicly,',
-    '   send them an invitation email, and create their member agent on',
-    '   first sign-in.',
-    '',
-    '7. If the user types something like "adelante" or "sí" between steps,',
-    '   treat it as a no-op — the system is already advancing.',
-    '',
-    'DO NOT ask "shall I continue?" or "do you want me to proceed?". The',
-    'system handles the handoff on its own once the schema is satisfied.',
-  ].join('\n');
+  return buildStrictStepPrompt({
+    processLabel: 'c4e community-member invitation',
+    stepId: 'collect',
+    kind: 'collect',
+    followUpQuestions: true,
+    objective:
+      "gather the new community member's identity: name, email, headline, " +
+      'Telegram handle (or an explicit "no") and LinkedIn URL (or an ' +
+      'explicit "no").',
+    payloadShape: [
+      '{ name, email, headline, telegramHandle, linkedinUrl, offering?,',
+      '  lookingFor?, description? }',
+      '- name (string, REQUIRED) — full name',
+      '- email (string, REQUIRED) — also their login email',
+      '- headline (string, REQUIRED) — one-line "what they do", free text',
+      '- telegramHandle (string | null, REQUIRED-NULLABLE) — handle with the',
+      '  leading @ (e.g. "@alice"); the literal value null ONLY when the',
+      '  member explicitly declined / does not use Telegram',
+      '- linkedinUrl (string | null, REQUIRED-NULLABLE) — profile URL; null',
+      '  ONLY when the member explicitly has no LinkedIn',
+      '- offering?, lookingFor?, description? — optional strings; OMIT when',
+      '  the user gives nothing.',
+    ].join('\n'),
+    rules: [
+      'telegramHandle counts as MISSING if the user did not mention ' +
+        'Telegram at all — ask explicitly: "¿cuál es su handle de ' +
+        'Telegram?" (c4e is Telegram-first; the handle is what connects ' +
+        'the human to their agent). Accept "no tiene" / "no usa Telegram" ' +
+        'and submit null. Same pattern for LinkedIn.',
+      'Do NOT submit the payload until the user has answered about BOTH ' +
+        'Telegram and LinkedIn (value or explicit "no") — submitting ' +
+        'earlier locks the missing fields out forever.',
+      'After everything lands, the orchestrator researches the member ' +
+        'publicly, sends the invitation email and creates their member ' +
+        'agent on first sign-in — your ack is one short line, nothing more.',
+      'If the user types "adelante" or "sí" between steps, treat it as a ' +
+        'no-op — the system is already advancing.',
+    ],
+  });
 }
 
 /** The full `join-community` process template. */
 export const joinCommunityProcess: ProcessTemplate = {
   slug: 'join-community',
-  version: '0.1.0',
+  version: '0.2.0',
+  // Template default for every llm node (`node.model` overrides per step).
+  model: 'anthropic/claude-haiku-4.5',
   metadata: {
     pluginSlug: 'onboarding',
     launchable: true,

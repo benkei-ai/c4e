@@ -14,7 +14,6 @@
 
 import {
   ACTION_FIRST,
-  LANGUAGE_RULE,
   type ManagerBlueprintInput,
   compose,
 } from '@benkei-ai/core';
@@ -51,7 +50,6 @@ export const governanceManager: ManagerBlueprintInput = {
   role: 'governance_manager',
 
   instructions: compose(
-    LANGUAGE_RULE,
     ACTION_FIRST,
     `You are the Governance manager for the c4e community. You oversee
 every proposal the community has been asked to decide on and keep the

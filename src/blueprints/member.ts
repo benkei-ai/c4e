@@ -16,7 +16,6 @@ import {
   ACTION_FIRST,
   CHILD_RULES,
   type ChildBlueprintInput,
-  LANGUAGE_RULE,
   compose,
 } from '@benkei-ai/core';
 import { z } from 'zod';
@@ -39,16 +38,46 @@ const ProjectRecordSchema = z
   })
   .strict();
 
-/** Typed schema for one entry in a member's work history. */
-const WorkExperienceRecordSchema = z
+/**
+ * Typed schema for one of a member's skills. Drives the deterministic "Skills"
+ * list/tags on the member's dashboard. `name` is mandatory; `level` and
+ * `category` are optional so a row can be a bare skill name or a fully-rated
+ * entry. Added/edited through `records.upsert` (never the interview, which
+ * only writes narrative prose).
+ */
+const SkillRecordSchema = z
   .object({
-    company: z.string().min(1),
-    role: z.string().min(1),
-    start: z.string(),
-    end: z.string().optional(),
-    summary: z.string().optional(),
-    location: z.string().optional(),
-    skills: z.array(z.string()).optional(),
+    name: z.string().min(1),
+    level: z.enum(['beginner', 'intermediate', 'advanced', 'expert']).optional(),
+    category: z.string().optional(),
+  })
+  .strict();
+
+/**
+ * Typed schema for one reputation signal accrued by a member. Reputation is
+ * modelled as an append-only log of signals (endorsements, contributions,
+ * events hosted, referrals, kudos); the dashboard SUMS `points` into an
+ * aggregate score and renders the most recent signals. One row per signal via
+ * `records.upsert` — never overwritten in bulk, so the history stays auditable.
+ *   kind   — what earned the reputation
+ *   points — signed weight (positive normally; negative allowed for penalties)
+ *   from   — DID of the member/agent who issued the signal, when applicable
+ *   note   — short human-readable reason shown next to the signal
+ *   at     — ISO 8601 timestamp the signal was recorded
+ */
+const ReputationRecordSchema = z
+  .object({
+    kind: z.enum([
+      'endorsement',
+      'contribution',
+      'event_hosted',
+      'referral',
+      'kudos',
+    ]),
+    points: z.number(),
+    from: z.string().optional(),
+    note: z.string().optional(),
+    at: z.string(),
   })
   .strict();
 
@@ -99,7 +128,6 @@ export const memberChild: C4EMemberBlueprint = {
 
   lifecycleInstructions: {
     explorer: compose(
-      LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
       `You are the dedicated agent for someone who is EXPLORING c4e but
@@ -116,7 +144,6 @@ been formally invited.`,
   invited them), the interview will become available automatically.`,
     ),
     onboarding: compose(
-      LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
       `You are the dedicated agent for a c4e community member who has JUST
@@ -131,7 +158,6 @@ through the onboarding interview so the community can find them.`,
   state.`,
     ),
     member: compose(
-      LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
       `You are the dedicated agent for one member of the c4e community. You
@@ -148,7 +174,6 @@ Telegram handle.`,
   discover other members and find the right people in the community.`,
     ),
     VIP: compose(
-      LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
       `You are the dedicated agent for a VIP-tier c4e community member.
@@ -183,43 +208,73 @@ results.`,
     },
   },
 
+  // The member profile is the single thing shown at the top of this agent's
+  // dashboard. Layout intent (by `order`): the composed PROFILE hero first,
+  // then the other interview-composed narrative sections, then the structured
+  // (records-mode) collections the dashboard renders as tables/charts, then
+  // the aux routing sections last.
+  //
+  // Kind discipline (foundation F6): every `record` namespace MUST carry a
+  // `recordSchema` or the blueprint fails validation ("phantom record"). And a
+  // namespace the `user-interview` process writes via `knowledge.write`
+  // (profile, work_experience, offering, events, links, telegram — see the
+  // engine's `apply_interview_to_wiki`) MUST be `narrative`, because the new
+  // core throws on `knowledge.write` to a records-mode namespace. Only the
+  // namespaces filled later via `records.upsert` (projects, skills, reputation)
+  // are records-mode.
   namespaceSchema: [
-    // The user-visible wiki sections composed at the end of the
-    // `user-interview` process from interview + research. The interview
-    // collects raw data turn-by-turn, the LLM `compose` step weaves each
-    // section as enriched markdown narrative drawing on both sources.
+    // ── interview-composed narrative sections (written by apply_interview_to_wiki) ──
+    // THE member profile — the dashboard hero. Composed at the end of the
+    // `user-interview` from interview answers + public research.
     { name: 'profile', kind: 'narrative', label: 'Profile', order: 1 },
-    // Work history is structured: one record per role so a future dashboard
-    // can render a timeline / filter by company / sort by date without
-    // re-parsing prose.
-    {
-      name: 'work_experience',
-      kind: 'record',
-      label: 'Work experience',
-      order: 2,
-      recordSchema: WorkExperienceRecordSchema,
-    },
+    // Work history as enriched prose. The interview's `compose` step writes a
+    // narrative section here (not rows), so this namespace is narrative; a
+    // future structured timeline would live in its own records namespace.
+    { name: 'work_experience', kind: 'narrative', label: 'Work experience', order: 2 },
     { name: 'offering', kind: 'narrative', label: 'Products & Services', order: 3 },
-    { name: 'events', kind: 'narrative', label: 'Events', order: 4 },
-    // Aux records — written deterministically from interview data, used by
-    // the routing layer (telegram handle resolves to this agent) and the
-    // discovery summarizer. Lower order so they appear after the main
-    // narrative sections in the wiki tree.
-    { name: 'links', kind: 'record', label: 'Links', order: 5 },
-    { name: 'telegram', kind: 'record', label: 'Telegram', order: 6 },
-    // Projects is structured: each row is one project with title/summary/
-    // status/budget so the dashboard can show a portfolio table and a
-    // status kanban. Adds/edits go through `records.upsert`.
+
+    // ── structured collections (records-mode — drive dashboard tables/charts) ──
+    // Each row is one project with title/summary/status/budget so the
+    // dashboard can show a portfolio table and a status kanban. `records.upsert`.
     {
       name: 'projects',
       kind: 'record',
       label: 'Projects',
-      order: 7,
+      order: 4,
       recordSchema: ProjectRecordSchema,
     },
-    { name: 'interests', kind: 'narrative', label: 'Interests', order: 8 },
-    { name: 'skills', kind: 'record', label: 'Skills', order: 9 },
-    { name: 'hobbies', kind: 'narrative', label: 'Hobbies', order: 10 },
+    // One row per skill → dashboard skills list/tags. `records.upsert`.
+    {
+      name: 'skills',
+      kind: 'record',
+      label: 'Skills',
+      order: 5,
+      recordSchema: SkillRecordSchema,
+    },
+    // Append-only reputation signals → dashboard aggregate score + recent
+    // signals. `records.upsert` (one row per signal). See ReputationRecordSchema.
+    {
+      name: 'reputation',
+      kind: 'record',
+      label: 'Reputation',
+      order: 6,
+      recordSchema: ReputationRecordSchema,
+    },
+
+    // ── remaining narrative sections ──
+    // `interests` now also absorbs the old `hobbies` namespace (one section,
+    // less tree sprawl).
+    { name: 'interests', kind: 'narrative', label: 'Interests & hobbies', order: 7 },
+    // Relabelled "Events attended" to disambiguate from the Events MANAGER's
+    // `calendar` (a different agent): this is what THIS member attended.
+    { name: 'events', kind: 'narrative', label: 'Events attended', order: 8 },
+
+    // ── aux routing sections (written by the interview, narrative-canon) ──
+    // `links` and `telegram` are written by `apply_interview_to_wiki` via
+    // knowledge.write, so they stay narrative. `telegram` still resolves the
+    // member through the c4e Telegram bot (the routing layer reads the section).
+    { name: 'links', kind: 'narrative', label: 'Links', order: 9 },
+    { name: 'telegram', kind: 'narrative', label: 'Telegram', order: 10 },
   ],
 
   capabilities: [
@@ -240,17 +295,19 @@ results.`,
     },
     {
       id: 'records.list',
-      purpose: "List structured rows (projects, work history) from this member's record namespaces.",
+      purpose:
+        "List structured rows (projects, skills, reputation signals) from this member's record namespaces.",
       required: true,
     },
     {
       id: 'records.upsert',
-      purpose: 'Add or update a project / work-history entry as a typed row.',
+      purpose:
+        'Add or update a project / skill / reputation-signal entry as a typed row.',
       required: true,
     },
     {
       id: 'records.delete',
-      purpose: 'Remove a project / work-history row by id.',
+      purpose: 'Remove a project / skill / reputation-signal row by id.',
       required: true,
     },
     {
@@ -261,6 +318,11 @@ results.`,
   ],
 
   workflows: ['user-interview'],
+
+  // The per-member profile dashboard (orchestrator-front local plugin
+  // `member-dashboard`): renders the composed Profile hero + reputation score
+  // + projects + skills. Replaces the generic agent home panel for members.
+  plugins: { dashboard: 'member-dashboard' },
 
   /**
    * When a member transitions to VIP, the orchestrator auto-writes
@@ -307,38 +369,45 @@ results.`,
     },
     // ─── member ───────────────────────────────────────────────────
     {
-      id: 'explore-community',
+      id: 'ask-community',
       state: 'member',
-      title: 'Conoce la comunidad',
+      title: 'Consulta el agente Community',
       body:
-        'Echa un vistazo al agente Community: encontrarás el manifiesto, ' +
-        'el calendario de eventos y los proyectos abiertos.',
-      action: { type: 'navigate', path: '/a/community' },
+        'Pregúntale qué pasa en c4e: eventos próximos, manifiesto, ' +
+        'proyectos abiertos.',
+      action: {
+        type: 'navigate',
+        path:
+          '/a/community?initial=' +
+          encodeURIComponent('¿Qué está pasando esta semana en c4e?'),
+      },
+    },
+    {
+      id: 'ask-members',
+      state: 'member',
+      title: 'Consulta el agente Members',
+      body:
+        'Busca a otros members por experiencia, ubicación o intereses. ' +
+        'El agente Members te conecta con quien necesitas.',
+      action: {
+        type: 'navigate',
+        path:
+          '/a/members?initial=' +
+          encodeURIComponent('Encuéntrame members con experiencia en blockchain'),
+      },
     },
     {
       id: 'add-first-project',
       state: 'member',
       title: 'Sube tu primer proyecto',
       body:
-        'Lo que estés construyendo ahora — un side-project, una idea, una ' +
-        'startup. Aparece en el directorio para que otros members te encuentren.',
+        'Side-project, idea o startup. Aparece en el directorio para que ' +
+        'otros members te encuentren.',
       action: {
         type: 'chat',
         prompt: 'Añade un proyecto a mi wiki: <título, descripción, estado>',
       },
       autoCheck: { kind: 'knowledge_written', namespace: 'projects' },
-    },
-    {
-      id: 'meet-others',
-      state: 'member',
-      title: 'Conecta con otros members',
-      body:
-        'Pide a tu copilot que te muestre members con intereses o expertise ' +
-        'parecidos a los tuyos. Te presenta candidatos para conectar.',
-      action: {
-        type: 'chat',
-        prompt: 'Encuéntrame 3 members con intereses parecidos a los míos',
-      },
     },
     // ─── VIP ─────────────────────────────────────────────────────
     {

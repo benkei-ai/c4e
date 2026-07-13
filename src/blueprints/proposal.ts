@@ -15,7 +15,6 @@ import {
   ACTION_FIRST,
   CHILD_RULES,
   type ChildBlueprintInput,
-  LANGUAGE_RULE,
   compose,
 } from '@benkei-ai/core';
 import { z } from 'zod';
@@ -46,7 +45,6 @@ export const proposalChild: ChildBlueprintInput = {
 
   lifecycleInstructions: {
     default: compose(
-      LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
       `You are the dedicated agent for one c4e community proposal. You
@@ -89,7 +87,7 @@ signers, deadlines, vote tallies, decision, and rationale.`,
       order: 3,
       recordSchema: ProposalVoteRecordSchema,
     },
-    { name: 'signers', kind: 'record', label: 'Signers', order: 4 },
+    { name: 'signers', kind: 'narrative', label: 'Signers', order: 4 },
     { name: 'decisions', kind: 'narrative', label: 'Decisions', order: 5 },
   ],
 

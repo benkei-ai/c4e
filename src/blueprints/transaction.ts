@@ -15,7 +15,6 @@ import {
   ACTION_FIRST,
   CHILD_RULES,
   type ChildBlueprintInput,
-  LANGUAGE_RULE,
   compose,
 } from '@benkei-ai/core';
 import { z } from 'zod';
@@ -47,7 +46,6 @@ export const transactionChild: ChildBlueprintInput = {
 
   lifecycleInstructions: {
     default: compose(
-      LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
       `You are the dedicated agent for one c4e treasury movement. You
@@ -92,7 +90,7 @@ proposal that authorised it.`,
       order: 3,
       recordSchema: TransactionLineItemRecordSchema,
     },
-    { name: 'receipts', kind: 'record', label: 'Receipts', order: 4 },
+    { name: 'receipts', kind: 'narrative', label: 'Receipts', order: 4 },
     { name: 'audit', kind: 'narrative', label: 'Audit', order: 5 },
   ],
 

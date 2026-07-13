@@ -1,29 +1,35 @@
 /**
- * `user-interview` — c4e onboarding interview (v0.6.0).
+ * `user-interview` — c4e onboarding interview (v0.11.0).
  *
- * Six conversational steps (one per data bucket) + research + compose +
- * organize. The user only sees the six interview chips and the rail
- * pulses through research/compose/organize automatically.
+ * THREE conversational steps (down from six) + research + compose +
+ * organize + T&C + welcome. The user only sees the three interview chips
+ * and the rail pulses through research/compose/organize automatically.
  *
  * Pipeline:
- *   1-6. Interview LLM steps   — collect raw data turn-by-turn into per-step
- *                                top-level buckets (data.identidad, ...).
- *      7. research (action)    — public web search → data.research.research
- *                                (single raw markdown blob).
- *      8. compose (LLM)        — combines interview + research into FOUR
- *                                enriched markdown sections at data.composed:
- *                                  { profileSummary, workExperience,
- *                                    productsServices, events }.
- *      9. organize (action)    — `apply_interview_to_wiki` persists the
- *                                four composed sections + aux records.
+ *   1. identidad (LLM)   — nombre, headline, ubicacion, rol_actual, org.
+ *   2. enlaces   (LLM)   — links { linkedin, website, github, twitter, telegram }.
+ *   3. comunidad (LLM)   — ofrezco, busco.
+ *      → research (action)— public web search → data.research.research
+ *                           (single raw markdown blob).
+ *      → compose (LLM)    — combines interview + research into FOUR
+ *                           enriched HTML sections at data.composed:
+ *                             { profileSummary, workExperience,
+ *                               productsServices, events }.
+ *      → organize (action)— `apply_interview_to_wiki` persists the four
+ *                           composed sections + aux sections.
+ *
+ * The old standalone `rol`, `trayectoria`, `ofrezco`, `busco` steps were
+ * folded in (rol → identidad; ofrezco+busco → comunidad) or dropped
+ * (trayectoria — research reconstructs work history). Every datum still
+ * lands in `data.*`; no answer is lost.
  *
  * Final wiki sections written (member.ts namespaceSchema):
  *   profile/summary             ← composed.profileSummary  (narrative + Links)
  *   work_experience/summary     ← composed.workExperience
  *   offering/summary            ← composed.productsServices
  *   events/summary              ← composed.events
- *   links/summary               ← derived from enlaces.links  (aux record)
- *   telegram/handle             ← derived from enlaces.links  (aux record)
+ *   links/summary               ← derived from enlaces.links  (aux section)
+ *   telegram/handle             ← derived from enlaces.links  (aux section)
  *
  * "research" is NEVER a wiki section — it's an internal staging blob the
  * `compose` step rewrites into the four narrative sections so each one
@@ -37,6 +43,7 @@
 
 import type { ProcessTemplate } from '@benkei-ai/core';
 import { z } from 'zod';
+import { buildStrictStepPrompt } from './strict-step.js';
 
 /* ─── per-section schemas ──────────────────────────────────────────────
    Each step's schema validates ONLY its own section. The LLM submits
@@ -45,10 +52,19 @@ import { z } from 'zod';
    Nullable strings are used wherever the user is allowed to opt out
    (the LLM emits `null` in that case — explicit, not omission). */
 
+// v0.11.0 — three conversational steps instead of six. `identidad` now also
+// captures the current role (was its own `rol` step), and `comunidad` merges
+// the old `ofrezco` + `busco` steps. The standalone `trayectoria` step was
+// dropped — the public `research` step already reconstructs work history, and
+// `compose` weaves it into the Work-experience section. Every datum the old
+// six steps collected still lands in `data.*` (no answer is lost), just under
+// three buckets.
 const IDENTIDAD_SCHEMA = z.object({
-  nombre:    z.string().min(1).describe('Nombre del miembro'),
-  headline:  z.string().min(1).describe('Una línea que te describa'),
-  ubicacion: z.string().min(1).describe('Ciudad / país desde el que te conectas'),
+  nombre:     z.string().min(1).describe('Nombre del miembro'),
+  headline:   z.string().min(1).describe('Una línea que te describa'),
+  ubicacion:  z.string().min(1).describe('Ciudad / país desde el que te conectas'),
+  rol_actual: z.string().min(1).describe('A qué se dedica hoy'),
+  org:        z.string().nullable().describe('Organización / empresa / proyecto principal, o null'),
 });
 
 const ENLACES_SCHEMA = z.object({
@@ -66,24 +82,9 @@ const ENLACES_SCHEMA = z.object({
     ),
 });
 
-const ROL_SCHEMA = z.object({
-  rol_actual: z.string().min(1).describe('A qué se dedica hoy'),
-  org:        z.string().nullable().describe('Organización / empresa / proyecto principal, o null'),
-});
-
-const TRAYECTORIA_SCHEMA = z.object({
-  trayectoria: z
-    .string()
-    .nullable()
-    .describe('3-5 hitos profesionales clave, o null si prefiere saltarlo'),
-});
-
-const OFREZCO_SCHEMA = z.object({
+const COMUNIDAD_SCHEMA = z.object({
   ofrezco: z.string().min(1).describe('Qué aporta a la comunidad — expertise, servicios'),
-});
-
-const BUSCO_SCHEMA = z.object({
-  busco: z.string().min(1).describe('Qué busca o necesita ahora'),
+  busco:   z.string().min(1).describe('Qué busca o necesita ahora'),
 });
 
 /** Version stamp baked into every acceptance record. Bump when text changes
@@ -147,15 +148,21 @@ export const C4E_TERMS_AND_CONDITIONS_V1 = [
 ].join('\n');
 
 const TERMS_SCHEMA = z.object({
+  // The ONLY field the client must supply — clicking "Acepto" in the
+  // deterministic gate (OnboardPanel) submits `{ accepted: true }`. The two
+  // fields below are server-derived defaults so the human node validates on a
+  // bare acceptance; no LLM is in the loop for this gate anymore.
   accepted: z.literal(true).describe('MUST be true — schema only validates on explicit acceptance'),
   acceptedAt: z
     .string()
     .min(1)
-    .describe('ISO 8601 timestamp of when the user accepted'),
+    .default(() => new Date().toISOString())
+    .describe('ISO 8601 timestamp of when the user accepted (defaults to now)'),
   termsVersion: z
     .string()
     .min(1)
-    .describe(`Version of the terms that were accepted (currently '${C4E_TERMS_VERSION}')`),
+    .default(C4E_TERMS_VERSION)
+    .describe(`Version of the terms that were accepted (defaults to '${C4E_TERMS_VERSION}')`),
 });
 
 /* ─── per-section prompts ─────────────────────────────────────────────
@@ -164,6 +171,11 @@ const TERMS_SCHEMA = z.object({
    engine posts the OPENING message of each step into the bound chat
    automatically (via announceConversationalStep + announceFirstStep). */
 
+// v0.10.0: thin wrapper over the vendored `buildStrictStepPrompt` — the
+// generalisation of the original c4e section-prompt factory. The engine
+// still extracts `QUESTION FOR THIS STEP:` from the rendered prompt and
+// posts it to chat BEFORE the LLM is called (announceConversationalStep);
+// the strict contract teaches extract → ack → stop, one step at a time.
 function buildSectionPrompt(args: {
   stepNumber: number;
   totalSteps: number;
@@ -172,56 +184,19 @@ function buildSectionPrompt(args: {
   payloadShape: string;
   notes?: string[];
 }): string {
-  const { stepNumber, totalSteps, question, payloadShape, notes } = args;
-  // v0.7.0: the engine extracts `QUESTION FOR THIS STEP:` from this prompt and
-  // posts it to the chat BEFORE the LLM is called (see
-  // `announceConversationalStep` in process-engine.ts). The LLM must NOT
-  // restate the question — duplication produced the "bot repeats itself" UX
-  // bug. The QUESTION line is therefore engine-only context, NOT a script for
-  // the LLM to recite. The LLM's whole job per turn is: extract → ack → stop.
-  const lines: string[] = [
-    `You are running step ${stepNumber} of ${totalSteps} of the c4e`,
-    'onboarding interview.',
-    '',
-    'IMPORTANT — DO NOT REPEAT THE QUESTION.',
-    'The engine has ALREADY posted the question to the user in this chat',
-    'before invoking you. The user is reading it right now. If you also',
-    'state the question, the chat shows the same prompt twice and the user',
-    'thinks the engine ignored their answer. Do NOT paraphrase the',
-    'question. Do NOT greet. Do NOT preview what comes next.',
-    '',
-    // NOTE: `QUESTION FOR THIS STEP:` is the magic marker the engine parses
-    // (announceConversationalStep regex) to post the question to chat BEFORE
-    // calling you. Treat the line below as engine context — it is already
-    // visible to the user in their chat window above. Do NOT echo it.
-    `QUESTION FOR THIS STEP: ${question}`,
-    '',
-    `PAYLOAD SHAPE: ${payloadShape}`,
-  ];
-  if (notes !== undefined && notes.length > 0) {
-    lines.push('', 'NOTES:', ...notes.map((n) => `- ${n}`));
-  }
-  lines.push(
-    '',
-    'YOUR JOB THIS TURN:',
-    '',
-    '1. Read the user\'s most recent message — it is their answer.',
-    '2. Call `update_process_data` ONCE with the payload for THIS step',
-    '   ONLY. Do NOT include fields from other steps even if the user',
-    '   volunteered them — the engine routes those when their step',
-    '   opens.',
-    '3. Reply with EXACTLY one of: "Anotado.", "Gracias.", or "Listo."',
-    '   Nothing else. No question, no preview, no field-by-field',
-    '   acknowledgement. The engine will open the next step.',
-    '4. ONLY exception: if the user\'s message is NOT an answer (they',
-    '   ask a clarification, push back on a required field, or refuse',
-    '   to provide a nullable one), then: do NOT call `update_process_data`,',
-    '   answer their question in one short sentence in Spanish, and stop.',
-    '   For optional/nullable fields, accept "no tengo" / "skip" / "null"',
-    '   as a valid answer (extract it as `null`).',
-    '5. Speak Spanish unless the user writes in another language.',
-  );
-  return lines.join('\n');
+  return buildStrictStepPrompt({
+    processLabel: 'c4e onboarding interview',
+    stepId: `paso-${args.stepNumber}`,
+    stepNumber: args.stepNumber,
+    totalSteps: args.totalSteps,
+    kind: 'collect',
+    question: args.question,
+    objective:
+      "extract the answer to this step's question from the user's message " +
+      'and submit it — nothing else.',
+    payloadShape: args.payloadShape,
+    ...(args.notes !== undefined ? { rules: args.notes } : {}),
+  });
 }
 
 /* ─── action-node schemas ──────────────────────────────────────────── */
@@ -263,13 +238,17 @@ const askIdentidadStep = {
   enterState: 'onboarding' as const,
   prompt: buildSectionPrompt({
     stepNumber: 1,
-    totalSteps: 6,
+    totalSteps: 3,
     isOpener: true,
     question:
-      'Hola — voy a hacerte una breve entrevista para organizar tu ' +
-      'perfil en la comunidad. Empezamos por lo básico: ¿cómo te llamas, ' +
-      'cómo te describirías en una línea, y desde dónde te conectas?',
-    payloadShape: '{ nombre, headline, ubicacion } — los tres requeridos.',
+      'Hola — voy a hacerte una entrevista rápida (3 pasos) para organizar ' +
+      'tu perfil en la comunidad. Empecemos por lo básico: ¿cómo te llamas, ' +
+      'cómo te describirías en una línea, desde dónde te conectas, y a qué ' +
+      'te dedicas hoy (rol y, si lo hay, empresa o proyecto principal)?',
+    payloadShape:
+      '{ nombre, headline, ubicacion, rol_actual, org } — `nombre`, ' +
+      '`headline`, `ubicacion` y `rol_actual` requeridos; `org` es string ' +
+      'o `null` si no aplica.',
   }),
   produces: {
     schema: IDENTIDAD_SCHEMA,
@@ -284,7 +263,7 @@ const askEnlacesStep = {
   type: 'llm' as const,
   prompt: buildSectionPrompt({
     stepNumber: 2,
-    totalSteps: 6,
+    totalSteps: 3,
     isOpener: false,
     question:
       '¿Qué enlaces quieres que conozca? LinkedIn, web personal, GitHub, ' +
@@ -306,84 +285,23 @@ const askEnlacesStep = {
   },
 };
 
-const askRolStep = {
-  id: 'rol',
+const askComunidadStep = {
+  id: 'comunidad',
   type: 'llm' as const,
   prompt: buildSectionPrompt({
     stepNumber: 3,
-    totalSteps: 6,
+    totalSteps: 3,
     isOpener: false,
     question:
-      '¿A qué te dedicas hoy? Cuéntame tu rol actual y, si lo hay, la ' +
-      'empresa o proyecto principal.',
-    payloadShape:
-      '{ rol_actual, org } — `rol_actual` requerido; `org` es string o ' +
-      '`null` si no aplica.',
+      'Última parada: cuéntame qué aportas y qué buscas. ¿Qué puedes ' +
+      'ofrecer a la comunidad (expertise, servicios, ayuda) y qué estás ' +
+      'buscando ahora mismo (co-founders, clientes, colaboradores, ' +
+      'contactos, oportunidades)?',
+    payloadShape: '{ ofrezco, busco } — los dos requeridos.',
   }),
   produces: {
-    schema: ROL_SCHEMA,
-    path: 'rol',
-    policy: 'sticky' as const,
-    partialOk: true,
-  },
-};
-
-const askTrayectoriaStep = {
-  id: 'trayectoria',
-  type: 'llm' as const,
-  prompt: buildSectionPrompt({
-    stepNumber: 4,
-    totalSteps: 6,
-    isOpener: false,
-    question:
-      'Cuéntame tu trayectoria — 3 a 5 hitos profesionales clave que te ' +
-      'hayan traído hasta aquí. (Opcional — puedes saltarlo.)',
-    payloadShape:
-      '{ trayectoria } — string libre o `null` si el usuario lo salta.',
-  }),
-  produces: {
-    schema: TRAYECTORIA_SCHEMA,
-    path: 'trayectoria',
-    policy: 'sticky' as const,
-    partialOk: true,
-  },
-};
-
-const askOfrezcoStep = {
-  id: 'ofrezco',
-  type: 'llm' as const,
-  prompt: buildSectionPrompt({
-    stepNumber: 5,
-    totalSteps: 6,
-    isOpener: false,
-    question:
-      '¿Qué puedes ofrecer a la comunidad? Tu expertise, servicios, o lo ' +
-      'que aportarías a alguien que te pida ayuda.',
-    payloadShape: '{ ofrezco } — string requerido.',
-  }),
-  produces: {
-    schema: OFREZCO_SCHEMA,
-    path: 'ofrezco',
-    policy: 'sticky' as const,
-    partialOk: true,
-  },
-};
-
-const askBuscoStep = {
-  id: 'busco',
-  type: 'llm' as const,
-  prompt: buildSectionPrompt({
-    stepNumber: 6,
-    totalSteps: 6,
-    isOpener: false,
-    question:
-      'Última pregunta: ¿qué estás buscando ahora mismo? Co-founders, ' +
-      'clientes, colaboradores, contactos, oportunidades…',
-    payloadShape: '{ busco } — string requerido.',
-  }),
-  produces: {
-    schema: BUSCO_SCHEMA,
-    path: 'busco',
+    schema: COMUNIDAD_SCHEMA,
+    path: 'comunidad',
     policy: 'sticky' as const,
     partialOk: true,
   },
@@ -429,6 +347,11 @@ const composeStep = {
   // the JSON object, validates against COMPOSE_RESULT_SCHEMA, and
   // advances. The user never sees this turn in chat — it produces the
   // markdown the deterministic `organize` step persists.
+  //
+  // Pinned to Opus (overrides the template's DeepSeek default): this is the
+  // member-facing profile — interview + research combined without invention,
+  // written ONCE per member. Precision is worth the override.
+  model: 'anthropic/claude-haiku-4.5',
   prompt: [
     'You are organizing a c4e community member\'s wiki profile.',
     '',
@@ -441,11 +364,10 @@ const composeStep = {
     '- GitHub: {{data.enlaces.links.github}}',
     '- Twitter/X: {{data.enlaces.links.twitter}}',
     '- Telegram: {{data.enlaces.links.telegram}}',
-    '- Rol actual: {{data.rol.rol_actual}}',
-    '- Organización: {{data.rol.org}}',
-    '- Trayectoria: {{data.trayectoria.trayectoria}}',
-    '- Qué ofrece: {{data.ofrezco.ofrezco}}',
-    '- Qué busca: {{data.busco.busco}}',
+    '- Rol actual: {{data.identidad.rol_actual}}',
+    '- Organización: {{data.identidad.org}}',
+    '- Qué ofrece: {{data.comunidad.ofrezco}}',
+    '- Qué busca: {{data.comunidad.busco}}',
     '',
     'Public research findings (gathered from the open web):',
     '{{data.research.research}}',
@@ -549,56 +471,21 @@ const TRANSITION_RESULT_SCHEMA = z
   })
   .passthrough();
 
-/* ─── terms & conditions step (v0.8.0) ──────────────────────────────────
-   Last user-facing step before become_member. The engine posts the T&C
-   text to the chat via the `QUESTION FOR THIS STEP:` marker; the LLM then
-   answers any questions the user has about the document and only calls
-   `update_process_data` when the user explicitly says "acepto". Schema is
-   `accepted: z.literal(true)` — anything else fails validation and the
-   run stays parked here. */
+/* ─── terms & conditions step (v0.9.0) ──────────────────────────────────
+   Last user-facing step before become_member. DETERMINISTIC: a `human`
+   node, not an LLM extraction. The onboarding plugin (OnboardPanel's
+   TermsGate) renders the T&C document (from `metadata.termsBody`) plus an
+   "Acepto" button; clicking it submits `{ accepted: true }` via
+   `submitProcessStep`. `accepted: z.literal(true)` is the gate; `acceptedAt`
+   and `termsVersion` default server-side (see TERMS_SCHEMA). No model is in
+   the loop — haiku used to botch the payload here and hard-fail the run. */
 const acceptTermsStep = {
   id: 'terms_acceptance',
-  type: 'llm' as const,
-  prompt: [
-    'You are running the final user-facing step of the c4e onboarding interview:',
-    'acceptance of the Community Terms & Conditions.',
-    '',
-    'IMPORTANT — DO NOT REPEAT THE T&C TEXT.',
-    'The engine has ALREADY posted the T&C document to the user in the',
-    'chat above. The user is reading it right now. Do NOT paste the whole',
-    'document again. Do NOT greet. The reference text below is for YOUR',
-    'use when the user asks a clarification question about the terms.',
-    '',
-    'QUESTION FOR THIS STEP:',
-    C4E_TERMS_AND_CONDITIONS_V1,
-    '',
-    'PAYLOAD SHAPE: { accepted: true, acceptedAt: <ISO timestamp>, termsVersion: ' +
-      `'${C4E_TERMS_VERSION}' } — accepted MUST be true; the schema rejects ` +
-      'anything else, so do not even try to record a refusal.',
-    '',
-    'YOUR JOB THIS TURN:',
-    '',
-    '1. Read the user\'s most recent message.',
-    '2. CASE A — explicit acceptance. They write some clear variant of',
-    '   "acepto" / "I accept" / "yes I agree" / "sí, acepto" / etc. (use',
-    '   your judgement — explicit affirmative referring to the terms).',
-    '   → Call `update_process_data` ONCE with:',
-    `      { accepted: true, acceptedAt: <ISO 8601 now>, termsVersion: '${C4E_TERMS_VERSION}' }`,
-    '   Then reply with "Aceptado. Bienvenido a c4e." and STOP.',
-    '3. CASE B — question or clarification about the T&C (e.g. "puedo',
-    '   borrar mis datos?", "quién ve mi perfil?", "qué pasa si rompo',
-    '   las normas?"). → Do NOT call `update_process_data`. Answer in',
-    '   one or two short sentences in Spanish, grounded in the reference',
-    '   text above. End with: "Cuando estés listo, escribe \\"acepto\\"."',
-    '4. CASE C — explicit refusal ("no acepto" / "rechazo"). → Do NOT',
-    '   call `update_process_data`. Reply: "Entiendo. Sin la aceptación',
-    '   no puedo activar tu membresía. Si cambias de opinión, escríbeme',
-    '   \\"acepto\\" cuando quieras." Then stop. The run will stay parked',
-    '   here until the user accepts or the operator cancels it.',
-    '5. CASE D — anything else (off-topic, ambiguous). → Treat as B:',
-    '   redirect gently to the T&C and prompt for acceptance or questions.',
-    '6. Speak Spanish unless the user writes in another language.',
-  ].join('\n'),
+  type: 'human' as const,
+  mode: 'fill' as const,
+  prompt:
+    'Aceptación de los Términos y Condiciones de la comunidad c4e. ' +
+    'Lee el documento y pulsa "Acepto" para activar tu membresía.',
   produces: {
     schema: TERMS_SCHEMA,
     path: 'terms_acceptance',
@@ -635,7 +522,9 @@ const becomeMemberStep = {
 
 export const userInterviewProcess: ProcessTemplate = {
   slug: 'user-interview',
-  version: '0.8.0',
+  version: '0.11.0',
+  // Template default for every llm node; `compose` pins Opus per node.
+  model: 'anthropic/claude-haiku-4.5',
   metadata: {
     // F16 — promoted to a lifecycle workflow so the engine owns the slot and
     // auto-syncs `agent_instances.state` (the column the Members dashboard
@@ -654,15 +543,22 @@ export const userInterviewProcess: ProcessTemplate = {
     primary: true,
     headerLabel: 'Entrevista de bienvenida',
     help:
-      'Una breve entrevista en 6 pasos para organizar tu perfil de ' +
+      'Una entrevista rápida en 3 pasos para organizar tu perfil de ' +
       'comunidad. El asistente pregunta turno a turno; el panel a la ' +
       'derecha refleja en vivo lo que va anotando, y puedes corregir ' +
       'cualquier campo sin interrumpir la conversación.',
     launchIcon: 'sparkles',
     instructions:
-      'Empieza por aquí: 6 pasos cortos para organizar tu perfil en c4e. ' +
+      'Empieza por aquí: 3 pasos cortos para organizar tu perfil en c4e. ' +
       'Responde con normalidad — el asistente irá rellenando el panel.',
-    requiredCallerRole: 'active',
+    // Onboarding-only: this is the very process that EXITS onboarding. Gating
+    // on `requiredCallerRole: 'active'` was a chicken-and-egg (new members
+    // start with membership_state=null and only reach 'active' on completion,
+    // so the previous gate locked them out of the only step that would
+    // promote them). Owner-only enforcement is already handled by the
+    // dashboard tutorial card (isCopilot via owner_user_id) and the
+    // tRPC `perms.read` gate before this point.
+    requiredAgentState: 'onboarding',
     announceFirstStep: true,
     // Scaffolds the right-pane form. Each field's `step` points at the
     // node id that gathers it; the OnboardPanel filters fields by the
@@ -674,13 +570,14 @@ export const userInterviewProcess: ProcessTemplate = {
       { key: 'nombre',      label: 'Nombre',       icon: 'user',           required: true,  step: 'identidad' },
       { key: 'headline',    label: 'Headline',     icon: 'tag',            required: true,  step: 'identidad' },
       { key: 'ubicacion',   label: 'Ubicación',    icon: 'map-pin',        required: true,  step: 'identidad' },
+      { key: 'rol_actual',  label: 'Rol actual',   icon: 'briefcase',      required: true,  step: 'identidad' },
+      { key: 'org',         label: 'Organización', icon: 'building-2',                      step: 'identidad' },
       { key: 'links',       label: 'Enlaces',      icon: 'link',                            step: 'enlaces'   },
-      { key: 'rol_actual',  label: 'Rol actual',   icon: 'briefcase',      required: true,  step: 'rol'       },
-      { key: 'org',         label: 'Organización', icon: 'building-2',                      step: 'rol'       },
-      { key: 'trayectoria', label: 'Trayectoria',  icon: 'milestone',                       step: 'trayectoria' },
-      { key: 'ofrezco',     label: 'Qué ofrezco',  icon: 'gift',           required: true,  step: 'ofrezco'   },
-      { key: 'busco',       label: 'Qué busco',    icon: 'search',         required: true,  step: 'busco'     },
-      { key: 'accepted',    label: 'Acepto T&C',   icon: 'shield-check',   required: true,  step: 'terms_acceptance' },
+      { key: 'ofrezco',     label: 'Qué ofrezco',  icon: 'gift',           required: true,  step: 'comunidad' },
+      { key: 'busco',       label: 'Qué busco',    icon: 'search',         required: true,  step: 'comunidad' },
+      // `terms_acceptance` is a deterministic `human` node rendered by the
+      // OnboardPanel TermsGate (T&C document + Acepto button), NOT a StepForm
+      // text field — so it is intentionally absent from this list.
     ],
     // v0.8.0 — T&C text exposed at metadata level so the onboarding plugin
     // (right panel) can render it formatted alongside the chat. Constant
@@ -701,10 +598,7 @@ export const userInterviewProcess: ProcessTemplate = {
   nodes: [
     askIdentidadStep,
     askEnlacesStep,
-    askRolStep,
-    askTrayectoriaStep,
-    askOfrezcoStep,
-    askBuscoStep,
+    askComunidadStep,
     researchStep,
     composeStep,
     organizeStep,
@@ -714,22 +608,19 @@ export const userInterviewProcess: ProcessTemplate = {
 
   edges: [
     { from: 'identidad',   to: 'enlaces' },
-    { from: 'enlaces',     to: 'rol' },
-    { from: 'rol',         to: 'trayectoria' },
-    { from: 'trayectoria', to: 'ofrezco' },
-    { from: 'ofrezco',     to: 'busco' },
-    { from: 'busco',       to: 'research' },
+    { from: 'enlaces',     to: 'comunidad' },
+    { from: 'comunidad',   to: 'research' },
     { from: 'research',    to: 'compose' },
     { from: 'compose',     to: 'organize' },
     { from: 'organize',    to: 'terms_acceptance' },
     { from: 'terms_acceptance', to: 'become_member' },
   ],
 
-  // Eight user-visible phases — six interview sections + a single
+  // Five user-visible phases — three interview sections + a single
   // "Research & compose" block (web research + LLM composition of the
-  // four final wiki sections) + organize (deterministic persistence).
-  // The shared `OnboardPanel` renders this as a horizontal rail of
-  // circles linked by a continuous line.
+  // four final wiki sections) + organize (deterministic persistence) +
+  // T&C + welcome. The shared `OnboardPanel` renders this as a horizontal
+  // rail of circles linked by a continuous line.
   blocks: [
     {
       id: 'identidad',
@@ -748,35 +639,13 @@ export const userInterviewProcess: ProcessTemplate = {
         'opcionales — di "no tengo" para los que no uses.',
     },
     {
-      id: 'rol',
-      label: 'Rol actual',
-      nodeIds: ['rol'],
-      icon: 'briefcase',
+      id: 'comunidad',
+      label: 'Comunidad',
+      nodeIds: ['comunidad'],
+      icon: 'handshake',
       description:
-        'A qué te dedicas hoy y, opcionalmente, la organización principal.',
-    },
-    {
-      id: 'trayectoria',
-      label: 'Trayectoria',
-      nodeIds: ['trayectoria'],
-      icon: 'milestone',
-      description:
-        '3 a 5 hitos profesionales clave. Opcional — puedes saltarlo.',
-    },
-    {
-      id: 'ofrezco',
-      label: 'Qué ofrezco',
-      nodeIds: ['ofrezco'],
-      icon: 'gift',
-      description: 'Tu expertise, servicios, lo que aportas a la comunidad.',
-    },
-    {
-      id: 'busco',
-      label: 'Qué busco',
-      nodeIds: ['busco'],
-      icon: 'search',
-      description:
-        'Co-founders, clientes, colaboradores, contactos, oportunidades…',
+        'Qué aportas a la comunidad y qué estás buscando ahora ' +
+        '(co-founders, clientes, colaboradores, contactos, oportunidades).',
     },
     {
       id: 'research',

@@ -14,7 +14,6 @@
 
 import {
   ACTION_FIRST,
-  LANGUAGE_RULE,
   type ManagerBlueprintInput,
   compose,
 } from '@benkei-ai/core';
@@ -48,7 +47,6 @@ export const projectsManager: ManagerBlueprintInput = {
   role: 'projects_manager',
 
   instructions: compose(
-    LANGUAGE_RULE,
     ACTION_FIRST,
     `You are the Projects manager for the c4e community. You oversee every
 shared initiative the community has committed to and keep the community's

@@ -15,7 +15,6 @@ import {
   ACTION_FIRST,
   CHILD_RULES,
   type ChildBlueprintInput,
-  LANGUAGE_RULE,
   compose,
 } from '@benkei-ai/core';
 import { z } from 'zod';
@@ -47,7 +46,6 @@ export const projectChild: ChildBlueprintInput = {
 
   lifecycleInstructions: {
     default: compose(
-      LANGUAGE_RULE,
       ACTION_FIRST,
       CHILD_RULES,
       `You are the dedicated agent for one c4e community-owned initiative.
@@ -89,7 +87,7 @@ milestones, members involved, status, links, and retrospective.`,
       order: 3,
       recordSchema: ProjectMilestoneRecordSchema,
     },
-    { name: 'links', kind: 'record', label: 'Links', order: 4 },
+    { name: 'links', kind: 'narrative', label: 'Links', order: 4 },
     { name: 'retrospective', kind: 'narrative', label: 'Retrospective', order: 5 },
   ],
 

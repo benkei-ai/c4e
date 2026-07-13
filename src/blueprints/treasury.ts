@@ -15,7 +15,6 @@
 
 import {
   ACTION_FIRST,
-  LANGUAGE_RULE,
   type ManagerBlueprintInput,
   compose,
 } from '@benkei-ai/core';
@@ -51,7 +50,6 @@ export const treasuryManager: ManagerBlueprintInput = {
   role: 'treasury_manager',
 
   instructions: compose(
-    LANGUAGE_RULE,
     ACTION_FIRST,
     `You are the Treasury manager for the c4e community. You oversee
 every movement of value the community makes and keep the community's

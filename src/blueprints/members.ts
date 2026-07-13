@@ -14,10 +14,29 @@
 
 import {
   ACTION_FIRST,
-  LANGUAGE_RULE,
   type ManagerBlueprintInput,
   compose,
 } from '@benkei-ai/core';
+import { z } from 'zod';
+
+/**
+ * Typed schema for one entry in the community roster. One row per member so
+ * the Members dashboard can render a sortable/filterable table of the whole
+ * community without re-parsing prose. `did` points at the member's dedicated
+ * agent; `state` mirrors their lifecycle. Maintained via `records.upsert`.
+ */
+const RosterRecordSchema = z
+  .object({
+    did: z.string().optional(),
+    name: z.string().min(1),
+    headline: z.string().optional(),
+    state: z.enum(['explorer', 'onboarding', 'member', 'VIP']),
+    location: z.string().optional(),
+    offering: z.string().optional(),
+    lookingFor: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .strict();
 
 /** The Members manager blueprint — the `manager` of the c4e bundle. */
 export const membersManager: ManagerBlueprintInput = {
@@ -26,7 +45,6 @@ export const membersManager: ManagerBlueprintInput = {
   role: 'community_manager',
 
   instructions: compose(
-    LANGUAGE_RULE,
     ACTION_FIRST,
     `You are the Members manager for the c4e community. You oversee every
 member of the community and keep the community's view of its people
@@ -51,7 +69,16 @@ detail yourself.`,
 
   namespaceSchema: [
     { name: 'overview', kind: 'narrative', label: 'Overview', order: 1 },
-    { name: 'roster', kind: 'record', label: 'Roster', order: 2 },
+    // Records-mode (one row per member) — drives the Members dashboard table.
+    // Must carry a recordSchema (foundation F6: a `record` namespace without
+    // one fails blueprint validation).
+    {
+      name: 'roster',
+      kind: 'record',
+      label: 'Roster',
+      order: 2,
+      recordSchema: RosterRecordSchema,
+    },
   ],
 
   capabilities: [
@@ -123,13 +150,6 @@ detail yourself.`,
         description:
           'Current role and recent professional milestones — what they ' +
           'have built and where, distinct from what they offer now.',
-      },
-      {
-        key: 'hobbies',
-        label: 'Hobbies',
-        description:
-          'What they do outside work — useful for finding peers on ' +
-          'shared non-professional interests.',
       },
     ],
     maxBytes: 4096,
