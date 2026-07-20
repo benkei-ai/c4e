@@ -45,6 +45,7 @@ export const newsReputationProcess: ProcessTemplate = {
         schema: z.object({
           scored: z.number(),
           written: z.number(),
+          removed: z.number(),
           members: z.number(),
           unattributed: z.number(),
         }),

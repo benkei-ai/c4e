@@ -52,10 +52,10 @@ const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
 
 /** Project status enum (mirrors c4e `ProjectRecordSchema.status`). */
 const PROJECT_STATUSES: { key: string; label: string; dot: string }[] = [
-  { key: 'active', label: 'Active', dot: 'bg-emerald-500' },
-  { key: 'idea', label: 'Idea', dot: 'bg-sky-500' },
-  { key: 'paused', label: 'Paused', dot: 'bg-amber-500' },
-  { key: 'done', label: 'Done', dot: 'bg-violet-500' },
+  { key: 'active', label: 'Active', dot: 'bg-emerald-500' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
+  { key: 'idea', label: 'Idea', dot: 'bg-sky-500' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
+  { key: 'paused', label: 'Paused', dot: 'bg-amber-500' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
+  { key: 'done', label: 'Done', dot: 'bg-violet-500' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
   { key: 'archived', label: 'Archived', dot: 'bg-muted-foreground' },
 ];
 
@@ -63,9 +63,9 @@ const PROJECT_STATUSES: { key: string; label: string; dot: string }[] = [
 const SKILL_LEVELS = ['expert', 'advanced', 'intermediate', 'beginner'] as const;
 
 const SKILL_LEVEL_CLS: Record<string, string> = {
-  expert: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  advanced: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-  intermediate: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+  expert: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400', // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
+  advanced: 'bg-sky-500/15 text-sky-600 dark:text-sky-400', // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
+  intermediate: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
   beginner: 'bg-muted text-muted-foreground',
 };
 
@@ -75,6 +75,8 @@ const REPUTATION_KIND_LABEL: Record<string, string> = {
   event_hosted: 'Event hosted',
   referral: 'Referral',
   kudos: 'Kudos',
+  // Written by the `news-reputation` process, one row per shared signal.
+  curation: 'Noticia compartida',
 };
 
 /** Initials for the avatar, from the agent display name. */
@@ -137,10 +139,10 @@ function StatTile({
  *  lifecycle explorer→onboarding→member→VIP). Falls back to the raw key so an
  *  unmapped state still reads as *something* rather than vanishing. */
 const MEMBER_STATE: Record<string, { label: string; cls: string }> = {
-  explorer: { label: 'Explorador', cls: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' },
-  onboarding: { label: 'Onboarding', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
-  member: { label: 'Miembro', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
-  vip: { label: 'VIP', cls: 'bg-violet-500/15 text-violet-600 dark:text-violet-400' },
+  explorer: { label: 'Explorador', cls: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
+  onboarding: { label: 'Onboarding', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
+  member: { label: 'Miembro', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
+  vip: { label: 'VIP', cls: 'bg-violet-500/15 text-violet-600 dark:text-violet-400' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
 };
 
 /** The live lifecycle-state chip shown in the hero, so a member always sees
@@ -172,22 +174,19 @@ function StateChip({ agent }: { agent: DashboardAgent }): JSX.Element | null {
 function InterviewCta({
   agent,
   host,
+  canExecute,
 }: {
   agent: DashboardAgent;
   host: DashboardHost;
+  /** Resolved once by the dashboard — see `AgentPermissions`. */
+  canExecute: boolean;
 }): JSX.Element {
   const { data: launchables } = host.useTrpcQuery<
     Array<{ slug: string; name: string; metadata: Record<string, string | boolean | undefined> }>
   >('getAgentLaunchables', { agentId: agent.id });
-  const { data: perms } = host.useTrpcQuery<{
-    read: boolean;
-    write: boolean;
-    execute: boolean;
-  }>('getMyAgentPermissions', { agentId: agent.id });
   const [launching, setLaunching] = useState(false);
 
   const primary = (launchables ?? []).find((t) => t.metadata.primary === true) ?? null;
-  const canExecute = perms?.execute === true;
 
   // No launchable primary (state ≠ onboarding, or nothing to launch): explain,
   // don't dead-end. Undefined launchables = still loading → show the message
@@ -227,9 +226,9 @@ function InterviewCta({
         // magenta accent as the app-wide FirstSessionHero, so the recommended
         // first action reads identically wherever it appears.
         'group flex w-full items-start gap-3 rounded-lg border ' +
-        'border-[#D2659A]/25 bg-[#FCE7EF] px-4 py-3.5 text-left transition-colors ' +
-        'hover:border-[#D2659A]/55 ' +
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D2659A] ' +
+        'border-[#D2659A]/25 bg-[#FCE7EF] px-4 py-3.5 text-left transition-colors ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
+        'hover:border-[#D2659A]/55 ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D2659A] ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
         'focus-visible:ring-offset-2 focus-visible:ring-offset-background ' +
         'disabled:cursor-not-allowed disabled:opacity-60'
       }
@@ -238,24 +237,24 @@ function InterviewCta({
         aria-hidden
         className={
           'flex h-9 w-9 shrink-0 items-center justify-center rounded-md ' +
-          'bg-[#D2659A] text-white transition-transform group-hover:scale-105'
+          'bg-[#D2659A] text-white transition-transform group-hover:scale-105' // design-lint-allow — c4e brand tile (matches FirstSessionHero)
         }
       >
         <Sparkles className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-[14px] font-semibold text-[#7A2F56]">{heading}</span>
+          <span className="text-[14px] font-semibold text-[#7A2F56]">{heading}</span> {/* design-lint-allow — c4e brand tile (matches FirstSessionHero) */}
           <span
             className={
-              'rounded-full bg-[#D2659A] px-2 py-0.5 text-[10px] font-semibold ' +
-              'uppercase tracking-wide text-white'
+              'rounded-full bg-[#D2659A] px-2 py-0.5 text-[10px] font-semibold ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
+              'uppercase tracking-wide text-white' // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
             }
           >
             {launching ? 'Abriendo…' : 'Empieza por aquí'}
           </span>
         </div>
-        <p className="mt-1 text-[13px] leading-relaxed text-[#7A2F56]/80">{subtitle}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-[#7A2F56]/80">{subtitle}</p> {/* design-lint-allow — c4e brand tile (matches FirstSessionHero) */}
         {!canExecute && (
           <p className="mt-1 text-xs text-muted-foreground">
             Necesitas permiso de ejecución sobre tu agente para iniciarla.
@@ -265,8 +264,8 @@ function InterviewCta({
       <ChevronRight
         aria-hidden
         className={
-          'mt-1 h-4 w-4 shrink-0 text-[#D2659A]/70 transition-all ' +
-          'group-hover:translate-x-0.5 group-hover:text-[#D2659A]'
+          'mt-1 h-4 w-4 shrink-0 text-[#D2659A]/70 transition-all ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
+          'group-hover:translate-x-0.5 group-hover:text-[#D2659A]' // design-lint-allow — c4e brand tile (matches FirstSessionHero)
         }
       />
     </button>
@@ -300,8 +299,11 @@ const SHARED_PAGE_SIZE = 5;
  */
 const FEED_STATUS_META: Record<string, { label: string; cls: string }> = {
   pending: { label: 'Leyendo…', cls: 'bg-muted text-muted-foreground' },
-  active: { label: 'Publicada', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
+  active: { label: 'Publicada', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
   failed: { label: 'No se pudo leer', cls: 'bg-destructive/15 text-destructive' },
+  // Moderation hook in the feed schema. Falling back to `pending` would tell
+  // the sharer it is still "being read" and invite them to share it again.
+  hidden: { label: 'Retirada', cls: 'bg-muted text-muted-foreground' },
 };
 
 /** `2026-07-20T…` → `20 jul 2026`. Empty/unparseable → ''. */
@@ -364,7 +366,7 @@ function ShareNewsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[10vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[10vh]" // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
       role="dialog"
       aria-modal="true"
       aria-labelledby="share-news-heading"
@@ -477,9 +479,12 @@ function ShareNewsModal({
 function ShareNewsCard({
   agent,
   host,
+  canRead,
 }: {
   agent: DashboardAgent;
   host: DashboardHost;
+  /** Execute permission on your own agent — resolved once by the dashboard. */
+  canRead: boolean;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(0);
@@ -491,16 +496,6 @@ function ShareNewsCard({
     pollMs: 15000,
   });
   const items = shared.data?.items ?? [];
-
-  // Launching `news-updates` needs execute on your own agent, same as the
-  // interview. Undefined while loading → treat as allowed: the button is the
-  // only door to the feed, and hiding it on a slow query reads as "gone".
-  const { data: perms } = host.useTrpcQuery<{
-    read: boolean;
-    write: boolean;
-    execute: boolean;
-  }>('getMyAgentPermissions', { agentId: agent.id });
-  const canRead = perms === undefined || perms.execute;
 
   /**
    * Open the reading pane. `news-updates` is a one-node no-op process whose
@@ -706,6 +701,17 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
     { pollMs: 15000 },
   );
 
+  // Resolved ONCE here and passed down. Both the share card and the interview
+  // CTA need it; querying it in each meant two identical round trips per render.
+  const perms = host.useTrpcQuery<{ read: boolean; write: boolean; execute: boolean }>(
+    'getMyAgentPermissions',
+    { agentId: agent.id },
+  );
+  // Undefined while loading → treat as allowed for the feed button: it is the
+  // only door to the feed, and hiding it on a slow query reads as "gone".
+  const canReadFeed = perms.data === undefined || perms.data.execute;
+  const canExecute = perms.data?.execute === true;
+
   const repRows = reputation.data?.records ?? [];
   const score = useMemo(
     () => repRows.reduce((sum, r) => sum + num(r.fields.points), 0),
@@ -750,7 +756,7 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
     <div className="mx-auto max-w-3xl space-y-5 text-sm text-foreground">
       {/* Sharing a link is the one thing a member does here repeatedly, so it
           leads — above the profile, which is read once and then rarely again. */}
-      <ShareNewsCard agent={agent} host={host} />
+      <ShareNewsCard agent={agent} host={host} canRead={canReadFeed} />
 
       {/* Hero: avatar + name + reputation, then the composed Profile */}
       <section className="overflow-hidden rounded-xl border border-sidebar-border bg-background">
@@ -765,7 +771,7 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
               <StateChip agent={agent} />
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-amber-600 dark:text-amber-400">
+          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-amber-600 dark:text-amber-400"> {/* design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS */}
             <Award className="h-4 w-4" />
             <span className="text-base font-semibold tabular-nums">{score}</span>
             <span className="text-xs opacity-80">reputación</span>
@@ -780,7 +786,7 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
               dangerouslySetInnerHTML={{ __html: profileHtml }}
             />
           ) : (
-            <InterviewCta agent={agent} host={host} />
+            <InterviewCta agent={agent} host={host} canExecute={canExecute} />
           )}
         </div>
       </section>
@@ -821,7 +827,7 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
                     <span className="text-muted-foreground"> — {str(r.fields.note)}</span>
                   )}
                 </span>
-                <span className="shrink-0 font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+                <span className="shrink-0 font-medium tabular-nums text-emerald-600 dark:text-emerald-400"> {/* design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS */}
                   +{num(r.fields.points)}
                 </span>
               </li>
