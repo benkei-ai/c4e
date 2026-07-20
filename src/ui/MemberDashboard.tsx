@@ -286,6 +286,10 @@ interface MyFeedItem {
   sharedAt: string;
 }
 
+/** The reading-pane process. A one-node no-op whose only job is to exist so a
+ *  run binds `pluginSlug: 'news-updates'` and the engine renders the pane. */
+const NEWS_UPDATES_SLUG = 'news-updates';
+
 /** How many shared items are listed per page. */
 const SHARED_PAGE_SIZE = 5;
 
@@ -470,9 +474,16 @@ function ShareNewsModal({
  * is filtered per-person, and would read their quiet "Novedades" as a broken
  * feature rather than as their own interest profile doing its job.
  */
-function ShareNewsCard({ host }: { host: DashboardHost }): JSX.Element {
+function ShareNewsCard({
+  agent,
+  host,
+}: {
+  agent: DashboardAgent;
+  host: DashboardHost;
+}): JSX.Element {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(0);
+  const [opening, setOpening] = useState(false);
 
   // Polled: a `pending` row becomes `active` when the ingest job finishes, and
   // the member should see that happen without reloading the page.
@@ -480,6 +491,39 @@ function ShareNewsCard({ host }: { host: DashboardHost }): JSX.Element {
     pollMs: 15000,
   });
   const items = shared.data?.items ?? [];
+
+  // Launching `news-updates` needs execute on your own agent, same as the
+  // interview. Undefined while loading → treat as allowed: the button is the
+  // only door to the feed, and hiding it on a slow query reads as "gone".
+  const { data: perms } = host.useTrpcQuery<{
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  }>('getMyAgentPermissions', { agentId: agent.id });
+  const canRead = perms === undefined || perms.execute;
+
+  /**
+   * Open the reading pane. `news-updates` is a one-node no-op process whose
+   * only purpose is to exist so a run can bind `pluginSlug: 'news-updates'` —
+   * launching it IS how you open the feed. Until now nothing launched it, so
+   * the pane was unreachable without hand-navigating to an old run.
+   */
+  const openUpdates = () => {
+    if (!canRead || opening) return;
+    setOpening(true);
+    void host
+      .launchProcess(agent, NEWS_UPDATES_SLUG, host.navigate)
+      .then((ok) => {
+        if (!ok) {
+          host.toast.error('No se pudieron abrir las novedades');
+          setOpening(false);
+        }
+      })
+      .catch(() => {
+        host.toast.error('No se pudieron abrir las novedades');
+        setOpening(false);
+      });
+  };
 
   const pageCount = Math.max(1, Math.ceil(items.length / SHARED_PAGE_SIZE));
   // A deletion can strand us past the last page; clamp on read rather than
@@ -497,14 +541,34 @@ function ShareNewsCard({ host }: { host: DashboardHost }): JSX.Element {
         title="Noticias"
         meta={items.length > 0 ? `has compartido ${items.length}` : undefined}
         action={
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Compartir
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openUpdates}
+              disabled={!canRead || opening}
+              title={
+                canRead
+                  ? 'Abre las novedades filtradas para ti'
+                  : 'Necesitas permiso de ejecución sobre tu agente'
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-sidebar-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-sidebar-accent/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {opening ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Newspaper className="h-3.5 w-3.5" />
+              )}
+              Leer novedades
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Compartir
+            </button>
+          </div>
         }
       >
         {items.length === 0 ? (
@@ -686,7 +750,7 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
     <div className="mx-auto max-w-3xl space-y-5 text-sm text-foreground">
       {/* Sharing a link is the one thing a member does here repeatedly, so it
           leads — above the profile, which is read once and then rarely again. */}
-      <ShareNewsCard host={host} />
+      <ShareNewsCard agent={agent} host={host} />
 
       {/* Hero: avatar + name + reputation, then the composed Profile */}
       <section className="overflow-hidden rounded-xl border border-sidebar-border bg-background">

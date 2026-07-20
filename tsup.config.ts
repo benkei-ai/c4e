@@ -1,7 +1,10 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // `actions` is a SEPARATE, server-only entry: the browser bundles must
+  // never reach it, and re-exporting it from the barrel would close an
+  // import cycle (the barrel is what the engine loads to register bundles).
+  entry: { index: 'src/index.ts', actions: 'src/actions/index.ts' },
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,

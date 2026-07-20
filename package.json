@@ -31,6 +31,11 @@
     "./ui": {
       "types": "./src/ui/index.ts",
       "import": "./src/ui/index.ts"
+    },
+    "./actions": {
+      "types": "./dist/actions.d.ts",
+      "import": "./dist/actions.js",
+      "require": "./dist/actions.cjs"
     }
   },
   "files": [

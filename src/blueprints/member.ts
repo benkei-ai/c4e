@@ -73,6 +73,10 @@ const ReputationRecordSchema = z
       'event_hosted',
       'referral',
       'kudos',
+      // Sharing news the club found useful. Written ONLY by the
+      // `news-reputation` process, one row per signal (`news:{signalId}`),
+      // recomputed rather than accumulated.
+      'curation',
     ]),
     points: z.number(),
     from: z.string().optional(),
@@ -384,7 +388,7 @@ results.`,
     },
   ],
 
-  workflows: ['user-interview', 'news-updates'],
+  workflows: ['user-interview', 'news-updates', 'news-reputation'],
 
   // The per-member profile dashboard (orchestrator-front local plugin
   // `member-dashboard`): renders the composed Profile hero + reputation score

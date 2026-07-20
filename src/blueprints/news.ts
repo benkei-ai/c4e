@@ -54,6 +54,17 @@ const FeedSignalRecordSchema = z
     tags: z.array(z.string()).optional(),
     /** Email of the member who shared it — the identity that resolves to their agent. */
     sharedBy: z.string().min(1),
+    /**
+     * DID of the sharer's own member agent, resolved at submit time.
+     *
+     * Redundant with `sharedBy` on purpose: reputation has to be written TO an
+     * agent, and members do not store their email anywhere, so deriving the
+     * agent from the address later is impossible without reaching into the
+     * engine's user table. Optional because rows shared before this field
+     * existed do not have it — those simply go unattributed rather than
+     * being guessed at.
+     */
+    sharedByAgentId: z.string().optional(),
     sharedAt: z.string(),
     /**
      * The member's own words when they shared it — why it matters, their take,

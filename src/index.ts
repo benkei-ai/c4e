@@ -51,6 +51,7 @@ import {
 import { joinCommunityProcess } from './processes/join-community.js';
 import { userInterviewProcess } from './processes/user-interview.js';
 import { newsUpdatesProcess } from './processes/news-updates.js';
+import { newsReputationProcess } from './processes/news-reputation.js';
 
 // Members (the original bundle).
 export {
@@ -63,6 +64,7 @@ export { memberChild } from './blueprints/member.js';
 export { joinCommunityProcess } from './processes/join-community.js';
 export { userInterviewProcess } from './processes/user-interview.js';
 export { newsUpdatesProcess } from './processes/news-updates.js';
+export { newsReputationProcess } from './processes/news-reputation.js';
 
 // Projects.
 export {
@@ -127,6 +129,7 @@ export const C4E_PROCESSES: ProcessTemplate[] = [
   joinCommunityProcess,
   userInterviewProcess,
   newsUpdatesProcess,
+  newsReputationProcess,
 ];
 
 /** The members blueprint as a runtime `TemplateBundle`. */
