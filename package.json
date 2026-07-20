@@ -27,11 +27,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./ui": {
+      "types": "./src/ui/index.ts",
+      "import": "./src/ui/index.ts"
     }
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "src/ui"
   ],
   "scripts": {
     "build": "tsup",
@@ -46,6 +51,11 @@
   },
   "devDependencies": {
     "@benkei-ai/core": "link:../benkei-agent-core/packages/core",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "lucide-react": "^0.460.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   },

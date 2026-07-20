@@ -15,5 +15,6 @@
     "resolveJsonModule": true
   },
   "include": ["src", "package.json"],
-  "exclude": ["node_modules", "dist"]
+  "// src/ui ships as SOURCE — the HOST (Vite + its React) compiles and typechecks it": "",
+  "exclude": ["node_modules", "dist", "src/ui"]
 }
