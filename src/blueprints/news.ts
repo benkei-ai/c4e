@@ -55,6 +55,12 @@ const FeedSignalRecordSchema = z
     /** Email of the member who shared it — the identity that resolves to their agent. */
     sharedBy: z.string().min(1),
     sharedAt: z.string(),
+    /**
+     * The member's own words when they shared it — why it matters, their take,
+     * or (for a `kind: 'idea'`/`'intent'` signal with no `url`) the whole thing.
+     * Preserved verbatim; the article `summary` is generated separately.
+     */
+    note: z.string().optional(),
     /** Why the fetch failed, when `status === 'failed'`. Shown to the sharer, not hidden. */
     error: z.string().optional(),
   })

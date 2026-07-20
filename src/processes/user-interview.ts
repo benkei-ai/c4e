@@ -551,14 +551,18 @@ export const userInterviewProcess: ProcessTemplate = {
     instructions:
       'Empieza por aquí: 3 pasos cortos para organizar tu perfil en c4e. ' +
       'Responde con normalidad — el asistente irá rellenando el panel.',
-    // Onboarding-only: this is the very process that EXITS onboarding. Gating
-    // on `requiredCallerRole: 'active'` was a chicken-and-egg (new members
-    // start with membership_state=null and only reach 'active' on completion,
-    // so the previous gate locked them out of the only step that would
-    // promote them). Owner-only enforcement is already handled by the
-    // dashboard tutorial card (isCopilot via owner_user_id) and the
-    // tRPC `perms.read` gate before this point.
-    requiredAgentState: 'onboarding',
+    // NO state gate — deliberately. This process EXITS onboarding, so gating it
+    // on a state is always a chicken-and-egg. `requiredCallerRole: 'active'`
+    // was removed first (new members reach 'active' only on completion); then
+    // `requiredAgentState: 'onboarding'` turned out to lock out the majority:
+    // 7 of 8 c4e members sat in state `member` — promoted without ever running
+    // the interview — so the ONE process that would build their profile was
+    // hidden from them, and their wiki (and therefore discovery) stayed empty.
+    // A member who has no profile must always be able to build one, whatever
+    // state the lifecycle put them in; a member who already has one simply
+    // re-runs it to refresh their profile. Owner-only enforcement is already
+    // handled by the dashboard card (isCopilot via owner_user_id) and the
+    // tRPC `perms.read` / `perms.execute` gates before this point.
     announceFirstStep: true,
     // Scaffolds the right-pane form. Each field's `step` points at the
     // node id that gathers it; the OnboardPanel filters fields by the

@@ -50,6 +50,7 @@ import {
 } from './catalog-meta.js';
 import { joinCommunityProcess } from './processes/join-community.js';
 import { userInterviewProcess } from './processes/user-interview.js';
+import { newsUpdatesProcess } from './processes/news-updates.js';
 
 // Members (the original bundle).
 export {
@@ -61,6 +62,7 @@ export { membersManager } from './blueprints/members.js';
 export { memberChild } from './blueprints/member.js';
 export { joinCommunityProcess } from './processes/join-community.js';
 export { userInterviewProcess } from './processes/user-interview.js';
+export { newsUpdatesProcess } from './processes/news-updates.js';
 
 // Projects.
 export {
@@ -124,6 +126,7 @@ export {
 export const C4E_PROCESSES: ProcessTemplate[] = [
   joinCommunityProcess,
   userInterviewProcess,
+  newsUpdatesProcess,
 ];
 
 /** The members blueprint as a runtime `TemplateBundle`. */

@@ -384,7 +384,7 @@ results.`,
     },
   ],
 
-  workflows: ['user-interview'],
+  workflows: ['user-interview', 'news-updates'],
 
   // The per-member profile dashboard (orchestrator-front local plugin
   // `member-dashboard`): renders the composed Profile hero + reputation score
