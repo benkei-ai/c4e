@@ -64,6 +64,12 @@ detail yourself.`,
 - Keep an overview of the community: who exists, what they do, where the
   gaps are.
 - Surface candidates for member-to-member discovery requests when asked.
+- Each member agent keeps its own typed records (\`projects\`, \`skills\`,
+  \`reputation\`); you hold only the \`roster\`. For any question spanning the
+  community — who works on what, which skills exist, who has projects running —
+  call \`records.query_subtree\` with the namespace you need. It covers you AND
+  every member agent in one pass, so it also reads your own \`roster\`. Narrow
+  with \`where\` when they ask for a concrete status or skill.
 - When asked to do something, do it with your tools — do not just describe it.`,
   ),
 
@@ -100,6 +106,12 @@ detail yourself.`,
     {
       id: 'knowledge.write',
       purpose: 'Keep the community overview and roster up to date.',
+      required: true,
+    },
+    {
+      id: 'records.query_subtree',
+      purpose:
+        "Aggregate typed records across the community — every member agent's `projects`/`skills`/`reputation` plus the manager's own `roster` — so community-wide questions can be answered in chat. `records.list` is instance-scoped and cannot see member agents.",
       required: true,
     },
   ],

@@ -64,6 +64,11 @@ detail yourself.`,
 - Keep the \`pipeline\` records current so the kanban (idea → active →
   paused → done → archived) reflects reality.
 - Route questions about a specific initiative to its \`project\` agent.
+- \`records.list\` only sees your own \`pipeline\`. When a question spans the
+  whole portfolio and needs detail the pipeline row does not carry (milestones,
+  scope, retrospectives held by each \`project\` agent), call
+  \`records.query_subtree\` with the namespace you need — it covers you and every
+  project agent in one pass.
 - When asked to do something, do it with your tools — do not just describe it.`,
   ),
 
@@ -97,6 +102,12 @@ detail yourself.`,
     {
       id: 'knowledge.write',
       purpose: 'Keep the portfolio overview up to date.',
+      required: true,
+    },
+    {
+      id: 'records.query_subtree',
+      purpose:
+        "Aggregate typed records across the portfolio — the manager's own `pipeline` plus each `project` agent's own records — so cross-portfolio questions can be answered in chat. `records.list` is instance-scoped.",
       required: true,
     },
     {

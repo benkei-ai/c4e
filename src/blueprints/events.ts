@@ -63,6 +63,10 @@ detail yourself.`,
 - Keep the \`calendar\` records current so the dashboard can split the
   agenda into "upcoming" and "past" without re-parsing prose.
 - Route questions about a specific gathering to its \`event\` agent.
+- \`records.list\` only sees your own \`calendar\`. When a question needs detail
+  the calendar row does not carry (agenda, attendees, outcome — each held by its
+  own \`event\` agent), call \`records.query_subtree\` with the namespace you
+  need; it covers you and every event agent in one pass.
 - When asked to do something, do it with your tools — do not just describe it.`,
   ),
 
@@ -96,6 +100,12 @@ detail yourself.`,
     {
       id: 'knowledge.write',
       purpose: 'Keep the calendar overview up to date.',
+      required: true,
+    },
+    {
+      id: 'records.query_subtree',
+      purpose:
+        "Aggregate typed records across the calendar — the manager's own `calendar` plus each `event` agent's agenda/attendees/outcome records — so cross-event questions can be answered in chat. `records.list` is instance-scoped.",
       required: true,
     },
     {
