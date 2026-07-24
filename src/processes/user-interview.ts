@@ -67,18 +67,75 @@ const IDENTIDAD_SCHEMA = z.object({
   org:        z.string().nullable().describe('Organización / empresa / proyecto principal, o null'),
 });
 
+/** The five link slots, in the order the panel and the prompt present them. */
+const LINK_KEYS = ['linkedin', 'website', 'github', 'twitter', 'telegram'] as const;
+
+/**
+ * Normalise whatever reaches this step into the full five-slot object.
+ *
+ * The strict shape froze real onboardings. `enlaces` was the single most
+ * abandoned node in c4e — four cancelled runs plus one member stuck for days —
+ * because TWO independent producers could not satisfy it:
+ *
+ *   1. The right-hand OnboardPanel renders `links` as ONE text field (see the
+ *      `fields` list below), so anything typed there arrives as a bare string:
+ *      `links: "linkedin.com/in/…"`. Against an object schema that is
+ *      `expected object, received string` — unsatisfiable by construction. No
+ *      value the member could type would ever have worked.
+ *   2. `.nullable()` is not `.optional()`: the key must be PRESENT. A member
+ *      who only has LinkedIn produced `{linkedin: "…"}` and failed on four
+ *      missing keys. The model had to volunteer four explicit nulls to pass.
+ *
+ * Both failures are silent — the step simply asks again — so the member reads
+ * it as "it won't accept my LinkedIn" and eventually gives up.
+ *
+ * Fixing it here rather than in the panel is deliberate: the panel is one
+ * producer, the LLM is another, and a future import would be a third. The
+ * contract belongs at the point of ingestion, where every producer passes.
+ *
+ * A bare string is taken as the LinkedIn URL — that is what the single field
+ * is used for in practice, and it is what every stuck run had staged.
+ */
+function normaliseLinks(raw: unknown): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const k of LINK_KEYS) out[k] = null;
+
+  const clean = (v: unknown): string | null => {
+    if (typeof v !== 'string') return null;
+    const t = v.trim();
+    return t === '' ? null : t;
+  };
+
+  if (typeof raw === 'string') {
+    out.linkedin = clean(raw);
+    return out;
+  }
+  if (raw !== null && typeof raw === 'object') {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      // Unknown keys are dropped, not an error: an over-eager model inventing
+      // `mastodon` must not cost the member their turn.
+      if ((LINK_KEYS as readonly string[]).includes(k)) out[k] = clean(v);
+    }
+  }
+  return out;
+}
+
 const ENLACES_SCHEMA = z.object({
   links: z
-    .object({
-      linkedin: z.string().nullable(),
-      website:  z.string().nullable(),
-      github:   z.string().nullable(),
-      twitter:  z.string().nullable(),
-      telegram: z.string().nullable(),
-    })
+    .preprocess(
+      normaliseLinks,
+      z.object({
+        linkedin: z.string().nullable(),
+        website:  z.string().nullable(),
+        github:   z.string().nullable(),
+        twitter:  z.string().nullable(),
+        telegram: z.string().nullable(),
+      }),
+    )
     .describe(
       'Enlaces públicos — cada sub-campo es un string o `null` ' +
-        'explícito si el miembro no lo usa.',
+        'explícito si el miembro no lo usa. Se acepta también un string ' +
+        'suelto (se interpreta como LinkedIn) o un objeto parcial.',
     ),
 });
 
@@ -270,11 +327,13 @@ const askEnlacesStep = {
       'Twitter/X y Telegram — todos son opcionales, dime "no tengo" para ' +
       'cualquiera que no uses (lo guardo como null).',
     payloadShape:
-      '{ links: { linkedin, website, github, twitter, telegram } } — los ' +
-      'cinco sub-campos son requeridos, cada uno es URL/handle (string) o `null`.',
+      '{ links: { linkedin, website, github, twitter, telegram } } — cada ' +
+      'sub-campo es URL/handle (string) o `null`. Los que omitas se guardan ' +
+      'como `null`.',
     notes: [
       'Telegram es un handle (con `@`), no una URL.',
-      'NO omitas ningún sub-campo: la validación es estricta sobre las cinco keys.',
+      'Manda sólo los enlaces que el miembro te dé; no inventes ni pidas los ' +
+        'que falten dos veces.',
     ],
   }),
   produces: {
@@ -522,7 +581,7 @@ const becomeMemberStep = {
 
 export const userInterviewProcess: ProcessTemplate = {
   slug: 'user-interview',
-  version: '0.11.0',
+  version: '0.12.0',
   // Template default for every llm node; `compose` pins Opus per node.
   model: 'anthropic/claude-haiku-4.5',
   metadata: {
