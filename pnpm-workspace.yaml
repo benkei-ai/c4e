@@ -1,0 +1,22 @@
+# Este fichero existe SÓLO por los ajustes de pnpm 11, no porque esto sea un
+# workspace. pnpm 11 dejó de leer el campo `pnpm` de package.json y movió su
+# casa aquí; sin estas listas, `pnpm install` termina con ERR_PNPM_IGNORED_BUILDS
+# y — lo que importa — **exit code 1**.
+#
+# `benkei-deploy.sh` corre bajo `set -euo pipefail`, así que ese exit 1 aborta el
+# despliegue y dispara el rollback. Pasó de verdad el 2026-07-26 desplegando
+# v1.4.1: el catálogo era el único de los cinco cuyo commit había cambiado, así
+# que fue el único que llegó a instalar, y murió en esbuild.
+#
+# `false` es deliberado: estos scripts YA se estaban saltando (eso es lo que
+# significa "ignored builds") y el catálogo construye y corre bien sin ellos. Así
+# que `false` registra la realidad de hoy y hace honesto el código de salida.
+# Poner uno en `true` es un cambio de comportamiento real —empieza a correr un
+# build nativo que aquí no ha corrido nunca—: hazlo paquete a paquete y con un
+# motivo.
+allowBuilds:
+  esbuild: false
+
+# Los pnpm anteriores leen esta lista en vez de la de arriba.
+onlyBuiltDependencies:
+  - esbuild
