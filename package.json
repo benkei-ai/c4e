@@ -55,7 +55,7 @@
     "zod": "^3.23.0"
   },
   "peerDependencies": {
-    "@benkei-ai/core": "^0.3.0"
+    "@benkei-ai/core": "^0.4.0"
   },
   "devDependencies": {
     "@benkei-ai/core": "link:../benkei-agent-core/packages/core",

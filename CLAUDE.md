@@ -1,30 +1,130 @@
-# CLAUDE.md — tenant dev workspace: c4e
+# CLAUDE.md — `@cryptobenkei/c4e`
 
-You are working inside the **isolated dev workspace of the `c4e` tenant**.
-This is NOT the Benkei engine. You can edit the tenant's catalog and memory;
-the canonical framework (`benkei-orchestrator`) is deliberately absent.
+Catálogo del org **c4e**: la comunidad. Este repo es **lógica de negocio de un
+tenant**, no motor. Aquí se declara cómo es la comunidad c4e; el motor
+(`benkei-orchestrator`) sólo la instala y la ejecuta.
 
-## What you CAN edit
-- `catalog/`  — the `@cryptobenkei/c4e` package source (adapters, services,
-  jobs, dashboards `ui/*.tsx`). This is a **git worktree** on a `dev-session/*`
-  branch; commits here ship on `ba-agent dev-ship c4e`. **This is the edit
-  surface.**
+---
 
-## Read-only reference (do NOT edit)
-- `memory/`  — a snapshot of the agent's FS wiki (`/benkei/storage`), for
-  CONTEXT only. It is read-only on disk and excludes keys/locks. Foundation
-  storage keeps sections as `index.html` + `index.meta.json` (with a
-  `bodyHash`) under a **signed** event log, so hand-edits would break
-  integrity. To change the tenant's knowledge, use the signed write path
-  (the agent's Memory UI / `writeSection`), never these files.
-- `core/`    — the **frozen** `@benkei-ai/core` (types reference). Never edit.
+## El negocio
 
-## What you must NOT do
-- Do not try to reach or modify the Benkei engine (`benkei-orchestrator`,
-  `server/foundation/*`). It is not mounted here — keep it that way.
+c4e es una **comunidad de miembros** con gobernanza, proyectos, eventos, noticias
+y tesorería. La idea central: **cada miembro tiene su propio agente**, y su vía
+de entrada principal es el bot de Telegram compartido.
 
-## Build / ship
-- Catalog builds standalone: `cd catalog && pnpm build` (tsup, against
-  `@benkei-ai/core`).
-- Ship = close this session, then `ba-agent dev-ship c4e` (build → commit →
-  merge → deploy).
+### Árbol de agentes
+
+```
+did:orch:c4e (raíz — la crea el motor, no este catálogo)
+├── members     manager  →  member       un agente por persona de la comunidad
+├── projects    manager  →  project      iniciativas de la comunidad
+├── events      manager  →  event        convocatorias
+├── governance  manager  →  proposal     propuestas a votación
+├── news        manager                  el feed de la comunidad
+└── treasury    manager  →  transaction  movimientos
+```
+
+Profundidad máxima 3 (raíz → manager → hoja): un `member` no puede tener hijos.
+
+### Los dos flujos que definen la comunidad
+
+**`join-community`** — se lanza desde el manager `members`. Recoge los datos del
+candidato (incluido su handle de Telegram), hace investigación pública, manda el
+correo de invitación, y **el agente del miembro se crea en su primer login**, no
+antes. Es decir: la invitación no mintea un agente huérfano.
+
+**`user-interview`** — lo lanza el propio miembro sobre **su** agente, la primera
+vez. Seis pasos conversacionales más investigación pública, y compone cuatro
+secciones de wiki: Perfil, Experiencia, Productos y Servicios, y Eventos. El
+resultado es que el agente del miembro sabe quién es su dueño.
+
+Los otros dos procesos (`news-updates`, `news-reputation`) alimentan el feed y
+puntúan la reputación de lo publicado.
+
+### Dónde viven los datos
+
+En la memoria del agente, no en este repo. Los namespaces `kind:'record'`
+declarados en los blueprints (miembros, proyectos, propuestas, transacciones) se
+validan contra su esquema zod y se escriben por `records.upsert`. **Nunca a
+mano**: `_records.json` está bajo un event log firmado y una edición manual rompe
+la integridad.
+
+---
+
+## Relación con Benkei
+
+La regla: **el motor no sabe qué es c4e.** Sabe instalar catálogos. Todo lo que
+hace a c4e ser c4e está en este repo.
+
+| Vive aquí (negocio) | Vive en el motor (mecánica) |
+|---|---|
+| Blueprints: managers, hijos, lifecycles | El árbol de agentes, la profundidad ≤3 |
+| Namespaces y sus esquemas zod | Storage, records, el índice y sus locks |
+| Procesos (`join-community`, …) | El motor de procesos y el launcher |
+| Acciones de `src/actions/` | El registro de capacidades y los permisos |
+| El *binding* del dashboard | El componente React del dashboard |
+
+Cuatro enganches lo conectan, y conviene saberlos porque **el tercero es el que
+se olvida**:
+
+1. **Dependencia** — `apps/agents-app/package.json` lo declara
+   `"@cryptobenkei/c4e": "link:../../../benkei-c4e"`.
+2. **Montaje y symlink** — `ba-mt-up.sh` monta este repo en `/benkei-c4e`, y
+   `agent-entrypoint.sh` §6 recrea el symlink
+   `node_modules/@cryptobenkei/c4e → /benkei-c4e` en cada arranque cuando
+   `BENKEI_ORG_SLUG=c4e`.
+3. **Registro** — `server/foundation/catalog-registry.ts` tiene la entrada
+   `c4e` con `processesExport: 'C4E_PROCESSES'`. Eso lo hace *resoluble*.
+4. **Procesos** — el motor siembra en bucle lo que exporte `C4E_PROCESSES`.
+   ⚠️ **Un slug que esté en `blueprint.workflows` pero no en `C4E_PROCESSES` se
+   descarta EN SILENCIO del launcher**: sin error, sin log, el agente parece
+   sano y el botón simplemente no está. Es el fallo que más horas cuesta.
+
+**Registrado ≠ instanciado.** Registrar el bundle lo hace resoluble en todos los
+arranques (inerte, no crea agentes); un *seed* mintea los managers en este org.
+
+---
+
+## Editar → aplicar
+
+El modelo vigente es **un solo contenedor multitenant** (`benkei-mt`, `:5200`),
+no un contenedor por agente. Lo que digan documentos antiguos sobre
+`benkei-agent-c4e` o un `port_base` propio ya no aplica.
+
+```bash
+# 1. Editar src/ aquí, en el host.
+pnpm build                                    # tsup → dist/
+
+# 2. Asegurarse de que el tenant activo es c4e:
+../../benkei-orchestrator/scripts/ba-mt-switch.sh c4e
+
+# 3. Reiniciar el motor para que recargue el catálogo:
+docker stop benkei-mt && docker start benkei-mt
+```
+
+- **`pnpm restart` de pm2 NO recarga un catálogo enlazado.** Hace falta reinicio
+  de contenedor.
+- **Nunca `pnpm install` dentro del contenedor vivo**: reescribe `node_modules` y
+  borra el symlink org-gated → este catálogo deja de resolver y los agentes
+  degradan a blueprint vacío, sin error.
+- Si construyes dentro del contenedor, invoca `./node_modules/.bin/tsup`
+  directamente: `pnpm build` ahí dentro entra en crash-loop por el chequeo de
+  dependencias de pnpm 11 sin TTY.
+
+## Versionado
+
+Semver propio (`package.json` + `releases/<x.y.z>.md`), tags e historia
+independientes del motor. Este catálogo se despliega a prod por separado, y por
+eso existen los **suelos de versión**: el catálogo declara qué motor mínimo
+necesita y el motor qué catálogo mínimo acepta.
+
+## Reglas
+
+- **No edites `~/Claude/benkei-templates`** para personalizar c4e: lo comparten
+  todos los tenants. Forkea el fichero concreto a `src/blueprints/` y cambia el
+  import.
+- Los nombres de namespace en modo records deben casar `/^[a-z_][a-z0-9_]*$/`.
+- `CATALOGS` se valida en el arranque de **todos** los tenants: un namespace
+  `kind:'record'` sin `recordSchema` aquí **tumba también a los otros cuatro**.
+  Valida con un import ESM real antes de reiniciar nada vivo.
+- `npm publish` acumulado al final de la sesión, nunca por paso.

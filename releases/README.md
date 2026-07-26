@@ -18,8 +18,8 @@ verdades que se desincronizan.
 Desde el checkout del **orchestrator**, que es donde vive la herramienta:
 
 ```bash
-bun scripts/release-catalog.ts ../benkei-c4e patch --summary "..."
-bun scripts/release-catalog.ts ../benkei-c4e minor --summary "..." --push
+bun scripts/release-catalog.ts ../tenants/c4e patch --summary "..."
+bun scripts/release-catalog.ts ../tenants/c4e minor --summary "..." --push
 ```
 
 Sube `package.json`, escribe el manifiesto, commitea y taggea `v<x.y.z>`.
