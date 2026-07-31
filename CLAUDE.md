@@ -120,7 +120,7 @@ necesita y el motor qué catálogo mínimo acepta.
 
 ## Reglas
 
-- **No edites `~/Claude/benkei-templates`** para personalizar c4e: lo comparten
+- **No edites `benkei-orchestrator/benkei-templates` (subtree del motor)** para personalizar c4e: lo comparten
   todos los tenants. Forkea el fichero concreto a `src/blueprints/` y cambia el
   import.
 - Los nombres de namespace en modo records deben casar `/^[a-z_][a-z0-9_]*$/`.
