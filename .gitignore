@@ -4,3 +4,9 @@ dist/
 .DS_Store
 .claude-flow/
 .claude/
+
+# Secretos: nunca al repo. Ningun catalogo los ignoraba y basta un
+# `git add -A` para publicar claves de un tenant.
+.env
+.env.*
+secrets.env
