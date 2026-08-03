@@ -55,10 +55,10 @@
     "zod": "^3.23.0"
   },
   "peerDependencies": {
-    "@benkei-ai/core": "^0.5.0"
+    "@benkei-ai/core": "^0.6.0"
   },
   "devDependencies": {
-    "@benkei-ai/core": "^0.5.0",
+    "@benkei-ai/core": "^0.6.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "lucide-react": "^0.460.0",
