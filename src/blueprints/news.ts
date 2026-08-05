@@ -74,6 +74,16 @@ const FeedSignalRecordSchema = z
     note: z.string().optional(),
     /** Why the fetch failed, when `status === 'failed'`. Shown to the sharer, not hidden. */
     error: z.string().optional(),
+    /**
+     * Cuándo se archivó la copia de la que salió el texto (ISO), si no salió
+     * del sitio vivo.
+     *
+     * Muchos sitios exigen verificación de navegador y sólo se pueden leer por
+     * la Wayback Machine. Eso es preferible a perder el enlace, pero el
+     * resumen es entonces de una foto de otro día — y el lector tiene que
+     * poder verlo. Ausente = leído del origen, hoy.
+     */
+    archivedAt: z.string().optional(),
   })
   .strict();
 

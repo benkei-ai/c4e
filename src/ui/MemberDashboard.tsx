@@ -8,11 +8,15 @@
  * a second React copy is a broken hooks tree.
  *
  * Layout, top to bottom:
- *   1. **Comparte una noticia** — the one thing a member does here repeatedly,
- *      so it leads. Collapsed to a single button; the form opens in a modal.
- *   2. Identity **hero** (avatar + name + reputation) + the composed **Profile**
+ *   1. Identity **hero** (avatar + name + reputation) + the composed **Profile**
  *      narrative (written by `user-interview` → `apply_interview_to_wiki`).
- *   3. At-a-glance **stats strip**, then **Reputación**, **Proyectos**, **Skills**.
+ *   2. At-a-glance **stats strip**, then **Reputación**, **Proyectos**, **Skills**.
+ *
+ * **Las noticias ya NO viven aquí** (2026-08-05). Compartir, ver lo compartido y
+ * lanzar el filtrado se han ido a la página News (`NewsDashboard`). El motivo:
+ * esta ficha es la de UNA PERSONA y se puede abrir la de cualquiera desde el
+ * directorio, pero `myFeedItems` siempre fue del que MIRA — así que abrir la
+ * ficha de otro enseñaba su cabecera con tu lista de noticias debajo.
  *
  * Typography matches the rest of the app (the chat / `.md-content` scale): the
  * root is `text-sm`, and the composed Profile HTML renders inside `.md-content`
@@ -23,24 +27,12 @@
  *   reputation  ← listRecords(namespace:'reputation')
  *   projects    ← listRecords(namespace:'projects')
  *   skills      ← listRecords(namespace:'skills')
- *   shared news ← myFeedItems()            (this member's own submissions)
  */
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import {
-  Award,
-  Briefcase,
-  ChevronRight,
-  Check,
-  FolderGit2,
-  Loader2,
-  Newspaper,
-  Plus,
-  Sparkles,
-  X,
-} from 'lucide-react';
+import { useMemo, type ReactNode } from 'react';
+import { Award, Briefcase, FolderGit2, Sparkles } from 'lucide-react';
 
-import type { CatalogDashboardProps, DashboardAgent, DashboardHost } from './host';
+import type { CatalogDashboardProps, DashboardAgent } from './host';
 
 interface RecordRow {
   id: string;
@@ -163,523 +155,56 @@ function StateChip({ agent }: { agent: DashboardAgent }): JSX.Element | null {
 }
 
 /**
- * Empty-profile call-to-action — the fix for the dead-end where a member with no
- * profile saw only "completa la entrevista" text and NO way to start it (the
- * generic `FirstSessionHero` never renders for an agent with a custom dashboard
- * bound). Here we fetch the agent's own launchables and, if its primary process
- * (the `user-interview`) is available, surface the "empieza por aquí" tile
- * inline. If the primary is not launchable (agent not in `onboarding`, or no
- * execute permission), we explain instead of dead-ending.
+ * Cuerpo de la ficha cuando todavía no hay perfil compuesto.
+ *
+ * Sólo TEXTO: el botón de la entrevista vive arriba, bajo el badge de
+ * reputación. Antes había aquí una segunda superficie —la baldosa rosa
+ * «empieza por aquí»— y, con el botón flotante que pintaba el motor, eran TRES
+ * sitios ofreciendo la misma acción en una pantalla que cabe de una vez.
+ *
+ * Lo que se dice depende de quién mira, porque «sin perfil» significa cosas
+ * distintas: en tu ficha es una tarea tuya pendiente; en la de otro es
+ * simplemente un dato que falta, y ofrecerte hacer su entrevista no tenía
+ * sentido.
  */
-function InterviewCta({
-  agent,
-  host,
-  canExecute,
+function SinPerfil({
+  esMiFicha,
+  /** Si el motor nos ha pasado su lanzador. Ausente = el proceso no es
+   *  lanzable (el agente no está en `onboarding`) o no hay permiso. */
+  hayBoton,
 }: {
-  agent: DashboardAgent;
-  host: DashboardHost;
-  /** Resolved once by the dashboard — see `AgentPermissions`. */
-  canExecute: boolean;
+  esMiFicha: boolean;
+  hayBoton: boolean;
 }): JSX.Element {
-  const { data: launchables } = host.useTrpcQuery<
-    Array<{ slug: string; name: string; metadata: Record<string, string | boolean | undefined> }>
-  >('getAgentLaunchables', { agentId: agent.id });
-  const [launching, setLaunching] = useState(false);
-
-  const primary = (launchables ?? []).find((t) => t.metadata.primary === true) ?? null;
-
-  // No launchable primary (state ≠ onboarding, or nothing to launch): explain,
-  // don't dead-end. Undefined launchables = still loading → show the message
-  // rather than a spinner (this block is already the empty state).
-  if (primary === null) {
+  if (!esMiFicha) {
+    return <p className="text-muted-foreground">Este socio todavía no tiene perfil.</p>;
+  }
+  if (hayBoton) {
     return (
       <p className="text-muted-foreground">
-        Sin perfil todavía. La entrevista de bienvenida se activa cuando tu agente entra en
-        modo <span className="font-medium text-foreground">onboarding</span> — pide a un
-        administrador de c4e que te habilite el onboarding y vuelve aquí.
+        Sin perfil todavía. Lanza la{' '}
+        <span className="font-medium text-foreground">entrevista de bienvenida</span> aquí arriba y
+        organizamos tu perfil, tus enlaces y lo que ofreces y buscas.
       </p>
     );
   }
-
-  const heading = (primary.metadata.headerLabel as string | undefined) ?? primary.name;
-  const subtitle =
-    (primary.metadata.instructions as string | undefined) ??
-    (primary.metadata.help as string | undefined) ??
-    'Cuéntanos quién eres y organizamos tu perfil, tus enlaces y lo que ofreces y buscas.';
-
-  const onClick = () => {
-    if (!canExecute || launching) return;
-    setLaunching(true);
-    void host
-      .launchProcess(agent, primary.slug, host.navigate)
-      .catch(() => setLaunching(false));
-  };
-
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!canExecute || launching}
-      aria-label={`${heading} — empieza por aquí`}
-      className={
-        // The c4e brand "empieza por aquí" tile — same rose-soft surface and
-        // magenta accent as the app-wide FirstSessionHero, so the recommended
-        // first action reads identically wherever it appears.
-        'group flex w-full items-start gap-3 rounded-lg border ' +
-        'border-[#D2659A]/25 bg-[#FCE7EF] px-4 py-3.5 text-left transition-colors ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
-        'hover:border-[#D2659A]/55 ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D2659A] ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
-        'focus-visible:ring-offset-2 focus-visible:ring-offset-background ' +
-        'disabled:cursor-not-allowed disabled:opacity-60'
-      }
-    >
-      <span
-        aria-hidden
-        className={
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-md ' +
-          'bg-[#D2659A] text-white transition-transform group-hover:scale-105' // design-lint-allow — c4e brand tile (matches FirstSessionHero)
-        }
-      >
-        <Sparkles className="h-5 w-5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-[14px] font-semibold text-[#7A2F56]">{heading}</span> {/* design-lint-allow — c4e brand tile (matches FirstSessionHero) */}
-          <span
-            className={
-              'rounded-full bg-[#D2659A] px-2 py-0.5 text-[10px] font-semibold ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
-              'uppercase tracking-wide text-white' // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
-            }
-          >
-            {launching ? 'Abriendo…' : 'Empieza por aquí'}
-          </span>
-        </div>
-        <p className="mt-1 text-[13px] leading-relaxed text-[#7A2F56]/80">{subtitle}</p> {/* design-lint-allow — c4e brand tile (matches FirstSessionHero) */}
-        {!canExecute && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            Necesitas permiso de ejecución sobre tu agente para iniciarla.
-          </p>
-        )}
-      </div>
-      <ChevronRight
-        aria-hidden
-        className={
-          'mt-1 h-4 w-4 shrink-0 text-[#D2659A]/70 transition-all ' + // design-lint-allow — c4e brand tile (matches FirstSessionHero)
-          'group-hover:translate-x-0.5 group-hover:text-[#D2659A]' // design-lint-allow — c4e brand tile (matches FirstSessionHero)
-        }
-      />
-    </button>
-  );
-}
-
-// ── Share a news item ───────────────────────────────────────────────────────
-
-/** One row the member has shared, as returned by `myFeedItems`. */
-interface MyFeedItem {
-  id: string;
-  url: string;
-  title: string;
-  summary: string;
-  note: string;
-  status: string;
-  sharedAt: string;
-}
-
-/** The reading-pane process. A one-node no-op whose only job is to exist so a
- *  run binds `pluginSlug: 'news-updates'` and the engine renders the pane. */
-const NEWS_UPDATES_SLUG = 'news-updates';
-
-/** How many shared items are listed per page. */
-const SHARED_PAGE_SIZE = 5;
-
-/**
- * Ingest state of a shared link. `pending` means the read-and-summarise job is
- * still running, so the row shows the raw URL as its title — saying so is
- * kinder than letting the member think the title is broken.
- */
-const FEED_STATUS_META: Record<string, { label: string; cls: string }> = {
-  pending: { label: 'Leyendo…', cls: 'bg-muted text-muted-foreground' },
-  active: { label: 'Publicada', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' }, // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
-  failed: { label: 'No se pudo leer', cls: 'bg-destructive/15 text-destructive' },
-  // Moderation hook in the feed schema. Falling back to `pending` would tell
-  // the sharer it is still "being read" and invite them to share it again.
-  hidden: { label: 'Retirada', cls: 'bg-muted text-muted-foreground' },
-};
-
-/** `2026-07-20T…` → `20 jul 2026`. Empty/unparseable → ''. */
-function shortDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-/**
- * The share form, in a modal. Rendered only while open, so the dashboard's
- * resting state is a single button and the fields cost nothing until wanted.
- *
- * Closes on Escape and on backdrop click — but NOT while a submission is in
- * flight, so a stray click cannot orphan a request whose result the member
- * would never see.
- */
-function ShareNewsModal({
-  host,
-  onClose,
-  onShared,
-}: {
-  host: DashboardHost;
-  onClose: () => void;
-  onShared: () => void;
-}): JSX.Element {
-  const [url, setUrl] = useState('');
-  const [note, setNote] = useState('');
-  const [status, setStatus] = useState<'idle' | 'sending' | 'error'>('idle');
-  const [error, setError] = useState('');
-
-  const busy = status === 'sending';
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [busy, onClose]);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (url.trim() === '' || busy) return;
-    setStatus('sending');
-    setError('');
-    try {
-      await host.trpcMutate('submitFeedItem', {
-        url: url.trim(),
-        note: note.trim() === '' ? undefined : note.trim(),
-      });
-      host.toast.success('Compartida — la estamos leyendo y resumiendo.');
-      onShared();
-      onClose();
-    } catch (err) {
-      setStatus('error');
-      setError(err instanceof Error ? err.message : 'No se pudo compartir el enlace');
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[10vh]" // design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="share-news-heading"
-      onMouseDown={(e) => {
-        // Only a click that STARTS on the backdrop closes it — otherwise a drag
-        // that ends outside the panel (selecting text in the note) would close
-        // the modal and throw the draft away.
-        if (e.target === e.currentTarget && !busy) onClose();
-      }}
-    >
-      <div className="w-full max-w-lg rounded-xl border border-sidebar-border bg-background p-5 shadow-lg">
-        <div className="mb-4 flex items-start gap-2">
-          <Newspaper className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 flex-1">
-            <h2 id="share-news-heading" className="text-base font-semibold text-foreground">
-              Comparte una noticia
-            </h2>
-            <p className="text-xs text-muted-foreground">con toda la comunidad</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            aria-label="Cerrar"
-            className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent/40 hover:text-foreground disabled:opacity-40"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label
-              htmlFor="share-news-url"
-              className="block text-xs font-medium text-muted-foreground"
-            >
-              Enlace
-            </label>
-            <input
-              id="share-news-url"
-              type="url"
-              required
-              autoFocus
-              value={url}
-              onChange={(e) => {
-                setUrl(e.target.value);
-                if (status === 'error') setStatus('idle');
-              }}
-              placeholder="https://…"
-              className="w-full rounded-lg border border-sidebar-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label
-              htmlFor="share-news-note"
-              className="block text-xs font-medium text-muted-foreground"
-            >
-              ¿Por qué la compartes? <span className="font-normal opacity-70">— opcional</span>
-            </label>
-            <textarea
-              id="share-news-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={3}
-              maxLength={2000}
-              placeholder="Un apunte para el resto de la comunidad…"
-              className="w-full resize-y rounded-lg border border-sidebar-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <p className="text-xs text-muted-foreground">
-              Leemos el artículo y escribimos el resumen automáticamente.
-            </p>
-          </div>
-
-          {status === 'error' && <p className="text-sm text-destructive">{error}</p>}
-
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={busy}
-              className="rounded-lg border border-sidebar-border px-3.5 py-2 text-sm text-foreground transition-colors hover:bg-sidebar-accent/40 disabled:opacity-40"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={url.trim() === '' || busy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              {busy ? 'Compartiendo…' : 'Compartir'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/**
- * What this member has shared, newest first, five per page — plus the button
- * that opens the share modal.
- *
- * With nothing shared yet the card explains the mechanism instead of showing an
- * empty list: a member who has never used it cannot otherwise tell that the feed
- * is filtered per-person, and would read their quiet "Novedades" as a broken
- * feature rather than as their own interest profile doing its job.
- */
-function ShareNewsCard({
-  agent,
-  host,
-  canRead,
-}: {
-  agent: DashboardAgent;
-  host: DashboardHost;
-  /** Execute permission on your own agent — resolved once by the dashboard. */
-  canRead: boolean;
-}): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const [page, setPage] = useState(0);
-  const [opening, setOpening] = useState(false);
-
-  // Polled: a `pending` row becomes `active` when the ingest job finishes, and
-  // the member should see that happen without reloading the page.
-  const shared = host.useTrpcQuery<{ items: MyFeedItem[] }>('myFeedItems', undefined, {
-    pollMs: 15000,
-  });
-  const items = shared.data?.items ?? [];
-
-  /**
-   * Open the reading pane. `news-updates` is a one-node no-op process whose
-   * only purpose is to exist so a run can bind `pluginSlug: 'news-updates'` —
-   * launching it IS how you open the feed. Until now nothing launched it, so
-   * the pane was unreachable without hand-navigating to an old run.
-   */
-  const openUpdates = () => {
-    if (!canRead || opening) return;
-    setOpening(true);
-    void host
-      .launchProcess(agent, NEWS_UPDATES_SLUG, host.navigate)
-      .then((ok) => {
-        if (!ok) {
-          host.toast.error('No se pudieron abrir las novedades');
-          setOpening(false);
-        }
-      })
-      .catch(() => {
-        host.toast.error('No se pudieron abrir las novedades');
-        setOpening(false);
-      });
-  };
-
-  const pageCount = Math.max(1, Math.ceil(items.length / SHARED_PAGE_SIZE));
-  // A deletion can strand us past the last page; clamp on read rather than
-  // tracking it in an effect.
-  const safePage = Math.min(page, pageCount - 1);
-  const pageItems = items.slice(
-    safePage * SHARED_PAGE_SIZE,
-    safePage * SHARED_PAGE_SIZE + SHARED_PAGE_SIZE,
-  );
-
-  return (
-    <>
-      <Section
-        icon={<Newspaper className="h-4 w-4 text-muted-foreground" />}
-        title="Noticias"
-        meta={items.length > 0 ? `has compartido ${items.length}` : undefined}
-        action={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={openUpdates}
-              disabled={!canRead || opening}
-              title={
-                canRead
-                  ? 'Abre las novedades filtradas para ti'
-                  : 'Necesitas permiso de ejecución sobre tu agente'
-              }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-sidebar-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-sidebar-accent/40 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {opening ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Newspaper className="h-3.5 w-3.5" />
-              )}
-              Leer novedades
-            </button>
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Compartir
-            </button>
-          </div>
-        }
-      >
-        {items.length === 0 ? (
-          // Nothing shared yet — explain the mechanism, don't show an empty box.
-          <div className="space-y-2.5 text-muted-foreground">
-            <p>
-              Comparte un enlace y lo leemos por ti: extraemos el titular y escribimos un
-              resumen, y la noticia entra en el feed común de la comunidad.
-            </p>
-            <p>
-              Lo que ves tú en <span className="font-medium text-foreground">Novedades</span> no
-              es todo el feed: cada noticia se filtra contra{' '}
-              <span className="font-medium text-foreground">tu perfil de intereses</span> — el
-              que escribió tu entrevista, y que puedes ajustar hablando con tu agente. Si aún no
-              tienes perfil, no filtramos nada y las verás todas.
-            </p>
-            <p className="text-xs">
-              El filtro es tuyo y privado: se aplica dentro de tu propio agente, y el resto de la
-              comunidad nunca ve qué te encaja y qué no.
-            </p>
-          </div>
-        ) : (
-          <>
-            <ul className="space-y-1.5">
-              {pageItems.map((it) => {
-                const meta = FEED_STATUS_META[it.status] ?? FEED_STATUS_META.pending;
-                // While `pending`, `title` is a placeholder copy of the URL —
-                // showing it twice is noise, so the title line is dropped.
-                const hasRealTitle = it.title !== '' && it.title !== it.url;
-                const when = shortDate(it.sharedAt);
-                return (
-                  <li
-                    key={it.id}
-                    className="rounded-lg bg-sidebar-accent/20 px-3 py-2.5 transition-colors hover:bg-sidebar-accent/40"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <a
-                        href={it.url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="min-w-0 flex-1 font-medium text-foreground hover:underline"
-                      >
-                        {hasRealTitle ? (
-                          <span className="line-clamp-2">{it.title}</span>
-                        ) : (
-                          <span className="line-clamp-1 break-all font-normal text-muted-foreground">
-                            {it.url}
-                          </span>
-                        )}
-                      </a>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${meta.cls}`}
-                      >
-                        {meta.label}
-                      </span>
-                    </div>
-                    {it.summary !== '' && (
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {it.summary}
-                      </p>
-                    )}
-                    {it.note !== '' && (
-                      <p className="mt-1 line-clamp-2 text-xs italic text-muted-foreground">
-                        “{it.note}”
-                      </p>
-                    )}
-                    {when !== '' && <p className="mt-1 text-xs text-muted-foreground/80">{when}</p>}
-                  </li>
-                );
-              })}
-            </ul>
-
-            {pageCount > 1 && (
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPage(safePage - 1)}
-                  disabled={safePage === 0}
-                  className="rounded-lg border border-sidebar-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-sidebar-accent/40 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Anterior
-                </button>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {safePage + 1} / {pageCount}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPage(safePage + 1)}
-                  disabled={safePage >= pageCount - 1}
-                  className="rounded-lg border border-sidebar-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-sidebar-accent/40 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Siguiente
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </Section>
-
-      {open && (
-        <ShareNewsModal
-          host={host}
-          onClose={() => setOpen(false)}
-          onShared={() => {
-            setPage(0); // the new item is newest-first, i.e. on page 1
-            shared.refetch();
-          }}
-        />
-      )}
-    </>
+    <p className="text-muted-foreground">
+      Sin perfil todavía. La entrevista de bienvenida se activa cuando tu agente entra en modo{' '}
+      <span className="font-medium text-foreground">onboarding</span> — pide a un administrador de
+      c4e que te lo habilite y vuelve aquí.
+    </p>
   );
 }
 
 // ── The dashboard ───────────────────────────────────────────────────────────
 
-export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps): JSX.Element {
+export function MemberDashboard({
+  agent,
+  preview,
+  addChild,
+  host,
+}: CatalogDashboardProps): JSX.Element {
   const profile = host.useTrpcQuery<{ content: string } | null>(
     'getSectionDetail',
     { agentId: agent.id, namespace: 'profile', key: 'summary' },
@@ -701,16 +226,21 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
     { pollMs: 15000 },
   );
 
-  // Resolved ONCE here and passed down. Both the share card and the interview
-  // CTA need it; querying it in each meant two identical round trips per render.
-  const perms = host.useTrpcQuery<{ read: boolean; write: boolean; execute: boolean }>(
-    'getMyAgentPermissions',
-    { agentId: agent.id },
-  );
-  // Undefined while loading → treat as allowed for the feed button: it is the
-  // only door to the feed, and hiding it on a slow query reads as "gone".
-  const canReadFeed = perms.data === undefined || perms.data.execute;
-  const canExecute = perms.data?.execute === true;
+  /**
+   * El copiloto del que MIRA — para saber si esta ficha es la suya.
+   *
+   * La entrevista de bienvenida es un acto personal: la lanza uno sobre su
+   * propio agente. Pero esta ficha se abre desde el directorio de socios, así
+   * que se puede estar viendo la de cualquiera, y el motor pintaba su botón en
+   * TODAS — ofreciéndote empezar la entrevista de Marc. El permiso no lo
+   * distinguía: un admin tiene `execute` sobre los 28.
+   *
+   * Sólo el catálogo puede decidir esto, y por eso la ficha entra en
+   * `DASHBOARDS_PLACING_ADD_CHILD`: apaga el botón flotante del motor y recibe
+   * el suyo por `addChild` para colocarlo donde toca — y sólo cuando toca.
+   */
+  const { data: copiloto } = host.useTrpcQuery<{ did: string | null }>('getMyCopilot');
+  const esMiFicha = copiloto?.did !== null && copiloto?.did === agent.id;
 
   const repRows = reputation.data?.records ?? [];
   const score = useMemo(
@@ -753,10 +283,13 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
 
   // ── Full dashboard ──
   return (
-    <div className="mx-auto max-w-3xl space-y-5 text-sm text-foreground">
-      {/* Sharing a link is the one thing a member does here repeatedly, so it
-          leads — above the profile, which is read once and then rarely again. */}
-      <ShareNewsCard agent={agent} host={host} canRead={canReadFeed} />
+    /* Mismo modelo de página que el directorio de socios y que el de Context:
+       lienzo gris a sangre y contenido centrado con tope de ancho. El motor no
+       le pone su `px-6 py-5` porque `member-dashboard` está en
+       `DASHBOARDS_OWNING_CANVAS` — sin esa alta, el padding dibujaría un marco
+       blanco alrededor del gris. */
+    <div className="min-h-full bg-canvas">
+      <div className="mx-auto w-full max-w-[1060px] space-y-5 px-6 pb-5 pt-8 text-sm text-foreground">
 
       {/* Hero: avatar + name + reputation, then the composed Profile */}
       <section className="overflow-hidden rounded-xl border border-sidebar-border bg-background">
@@ -771,10 +304,18 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
               <StateChip agent={agent} />
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-amber-600 dark:text-amber-400"> {/* design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS */}
-            <Award className="h-4 w-4" />
-            <span className="text-base font-semibold tabular-nums">{score}</span>
-            <span className="text-xs opacity-80">reputación</span>
+          {/* Reputación y, DEBAJO, la entrevista — sólo si esta ficha es la del
+              que mira y su perfil aún está vacío. Debajo del badge y no arriba
+              a la derecha porque es una acción sobre ESTA persona, y el sitio
+              donde se lee eso es su cabecera. Cuando la entrevista está hecha
+              el botón desaparece solo: `profileHtml` deja de estar vacío. */}
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <div className="flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-amber-600 dark:text-amber-400"> {/* design-lint-allow — status palette, mirrors SKILL_LEVEL_CLS */}
+              <Award className="h-4 w-4" />
+              <span className="text-base font-semibold tabular-nums">{score}</span>
+              <span className="text-xs opacity-80">reputación</span>
+            </div>
+            {esMiFicha && profileHtml === '' && addChild}
           </div>
         </div>
         <div className="px-5 py-4">
@@ -786,7 +327,7 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
               dangerouslySetInnerHTML={{ __html: profileHtml }}
             />
           ) : (
-            <InterviewCta agent={agent} host={host} canExecute={canExecute} />
+            <SinPerfil esMiFicha={esMiFicha} hayBoton={addChild !== undefined} />
           )}
         </div>
       </section>
@@ -908,6 +449,7 @@ export function MemberDashboard({ agent, preview, host }: CatalogDashboardProps)
           </div>
         )}
       </Section>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,13 @@ Catálogo del org **c4e**: la comunidad. Este repo es **lógica de negocio de un
 tenant**, no motor. Aquí se declara cómo es la comunidad c4e; el motor
 (`benkei-orchestrator`) sólo la instala y la ejecuta.
 
+> **c4e es uno de los cinco tenants y no tiene mecánica propia.** Mismo motor,
+> mismo despliegue, mismas reglas que `context`, `deskandsit`, `hulahoop` y
+> `neftis`. Lo único que lo distingue es lo que declara este `src/`: sus
+> blueprints, sus procesos y sus acciones. Si encuentras aquí un procedimiento
+> que no valga igual para los otros cuatro, sospecha del documento antes que del
+> sistema — es lo que ya pasó con el bloque de despliegue de más abajo.
+
 ---
 
 ## El negocio
@@ -87,20 +94,34 @@ arranques (inerte, no crea agentes); un *seed* mintea los managers en este org.
 
 ## Editar → aplicar
 
-El modelo vigente es **un solo contenedor multitenant** (`benkei-mt`, `:5200`),
-no un contenedor por agente. Lo que digan documentos antiguos sobre
-`benkei-agent-c4e` o un `port_base` propio ya no aplica.
+**Local y prod NO usan el mismo contenedor, y el reparto es igual para los cinco
+tenants.** Verificado el 2026-08-04 sondeando prod y la máquina local.
+
+| | Contenedor | Cómo se aplica un cambio |
+|---|---|---|
+| **Local** | `benkei-mt-c4e` (uno por tenant, puerto propio) | `pnpm build` + `docker restart` |
+| **Prod** | `benkei-agent-c4e` (uno por tenant) | `benkei-deploy c4e`, refs en `~/.benkei/agents/c4e/release.env` |
+
+`benkei-agent-c4e` **no está obsoleto**: es el contenedor que sirve
+`c4e-app.benkei.dev` ahora mismo. Este fichero afirmó lo contrario hasta el
+2026-08-04 —y el de neftis todavía lo afirma—, que es el tipo de error que lleva
+a buscar un problema de despliegue en el sitio equivocado.
 
 ```bash
 # 1. Editar src/ aquí, en el host.
 pnpm build                                    # tsup → dist/
 
-# 2. Asegurarse de que el tenant activo es c4e:
-../../benkei-orchestrator/scripts/ba-mt-switch.sh c4e
+# 2. LOCAL — recargar el catálogo en el contenedor de este tenant:
+docker restart benkei-mt-c4e
 
-# 3. Reiniciar el motor para que recargue el catálogo:
-docker stop benkei-mt && docker start benkei-mt
+# 3. PROD — se despliega por su tag, nunca copiando ficheros:
+#    ssh benkei-prod 'benkei-deploy c4e --catalog v0.X.0'
 ```
+
+⚠️ **Si mueves una carpeta bind-montada, RECREA el contenedor, no lo reinicies.**
+Los bind mounts se fijan en `docker create`: con `stop`+`start` Docker crea un
+directorio vacío en la ruta vieja y el agente arranca *healthy* con el catálogo
+vacío, sin un solo error en el log.
 
 - **`pnpm restart` de pm2 NO recarga un catálogo enlazado.** Hace falta reinicio
   de contenedor.
@@ -117,6 +138,14 @@ Semver propio (`package.json` + `releases/<x.y.z>.md`), tags e historia
 independientes del motor. Este catálogo se despliega a prod por separado, y por
 eso existen los **suelos de versión**: el catálogo declara qué motor mínimo
 necesita y el motor qué catálogo mínimo acepta.
+
+La fundación se declara `@benkei-ai/core: ^0.6.0` — **la misma que los otros
+cuatro catálogos** (comprobado el 2026-08-04). No es una coincidencia que haya
+que mantener: el contrato de fundación (`did:pqc`, event log, formatos de sobre)
+es uno solo para todo el árbol, así que **si subes la fundación, subes los cinco
+catálogos a la vez**. Un `^` que excluya la versión que corre de verdad no falla
+al arrancar: funciona hasta el primer `install` limpio, y entonces parte el
+contrato sin decir nada.
 
 ## Reglas
 

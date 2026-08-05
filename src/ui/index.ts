@@ -10,4 +10,6 @@
  */
 
 export { MemberDashboard } from './MemberDashboard';
+export { MembersDashboard } from './MembersDashboard';
+export { NewsDashboard } from './NewsDashboard';
 export type { CatalogDashboardProps, DashboardAgent, DashboardHost } from './host';
