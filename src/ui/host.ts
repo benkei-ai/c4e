@@ -92,4 +92,17 @@ export interface CatalogDashboardProps {
   /** The manager's add-child button, when the engine has one to place. */
   addChild?: ReactNode;
   host: DashboardHost;
+  /**
+   * Cuando el componente se monta como PÁGINA del menú (`/p/:slug`), TODOS los
+   * agentes que esa página declara en sus bindings, ya filtrados por permisos.
+   * `agent` es el primero de esta lista, así que un dashboard escrito para un
+   * agente sigue funcionando sin mirar aquí.
+   *
+   * Ausente cuando el componente se monta como dashboard de un agente — y esa
+   * ausencia es la diferencia observable entre las dos situaciones.
+   *
+   * Lo usa `ProfilePage` para encontrar la ficha del que mira dentro de la
+   * lista de socios, con lifecycle incluido, sin pedir una ruta nueva al motor.
+   */
+  pageAgents?: DashboardAgent[];
 }

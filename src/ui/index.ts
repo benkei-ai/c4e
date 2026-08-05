@@ -12,4 +12,5 @@
 export { MemberDashboard } from './MemberDashboard';
 export { MembersDashboard } from './MembersDashboard';
 export { NewsDashboard } from './NewsDashboard';
+export { ProfilePage } from './ProfilePage';
 export type { CatalogDashboardProps, DashboardAgent, DashboardHost } from './host';
