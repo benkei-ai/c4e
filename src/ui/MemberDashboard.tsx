@@ -225,6 +225,23 @@ export function MemberDashboard({
     { agentId: agent.id, namespace: 'skills' },
     { pollMs: 15000 },
   );
+  /**
+   * El titular: la línea que va bajo el nombre.
+   *
+   * Aquí estuvo cableado el literal «Miembro de la comunidad c4e», que es
+   * verdad para los 28 y por eso no distinguía a ninguno — ocupaba el único
+   * renglón donde cabía decir quién es esta persona. El dato ya se pedía en la
+   * entrevista (`identidad.headline`) y acababa disuelto en la prosa del
+   * perfil; ahora vive en su propio namespace. Ver `actions/tagline.ts`.
+   *
+   * Exactamente una fila, id `current`; se coge la primera que haya para no
+   * depender de eso al pintar.
+   */
+  const tagline = host.useTrpcQuery<{ records: RecordRow[] }>(
+    'listRecords',
+    { agentId: agent.id, namespace: 'tagline' },
+    { pollMs: 15000 },
+  );
 
   /**
    * El copiloto del que MIRA — para saber si esta ficha es la suya.
@@ -257,6 +274,8 @@ export function MemberDashboard({
 
   const projectRows = projects.data?.records ?? [];
   const skillRows = skills.data?.records ?? [];
+  /** El titular, o `''` si este socio todavía no lo tiene. */
+  const taglineText = str(tagline.data?.records?.[0]?.fields.text);
 
   const loading = profile.loading && reputation.loading && projects.loading && skills.loading;
   if (loading) return <host.Loading />;
@@ -300,7 +319,14 @@ export function MemberDashboard({
           <div className="min-w-0 flex-1 pt-1">
             <h1 className="truncate text-xl font-semibold text-foreground">{agent.name}</h1>
             <div className="mt-0.5 flex flex-wrap items-center gap-2">
-              <p className="text-xs text-muted-foreground">Miembro de la comunidad c4e</p>
+              {/* El titular cuando lo hay; si no, la frase genérica de antes.
+                  Se conserva el respaldo a propósito: los socios que entraron
+                  antes de que esto existiera no tienen titular, y dejar el
+                  renglón en blanco haría que su cabecera pareciera rota en vez
+                  de incompleta. */}
+              <p className="text-xs text-muted-foreground">
+                {taglineText !== '' ? taglineText : 'Miembro de la comunidad c4e'}
+              </p>
               <StateChip agent={agent} />
             </div>
           </div>

@@ -515,6 +515,45 @@ const organizeStep = {
   },
 };
 
+/**
+ * Guarda el titular del socio donde una TABLA pueda leerlo.
+ *
+ * `organize` deja el titular disuelto dentro de la prosa de `profile/summary`,
+ * y desde ahí el directorio de socios no puede enseñarlo sin parsear HTML por
+ * cada fila — así que el dato se recogía y se tiraba. Este nodo lo copia tal
+ * cual al namespace `tagline` del propio socio.
+ *
+ * Va DESPUÉS de `organize` y no dentro: `apply_interview_to_wiki` es del motor,
+ * y el motor no sabe —ni debe saber— que un socio de c4e tiene titular.
+ *
+ * No puede fallar la entrevista por esto: si no hay titular, la acción devuelve
+ * `written: false` y sigue. Ver `actions/tagline.ts`.
+ */
+const TAGLINE_RESULT_SCHEMA = z
+  .object({
+    written: z.boolean(),
+    text: z.string().optional(),
+    source: z.string().optional(),
+    reason: z.string().optional(),
+    did: z.string().optional(),
+  })
+  .passthrough();
+
+const taglineStep = {
+  id: 'tagline',
+  type: 'action' as const,
+  executor: 'inline' as const,
+  config: {
+    action: 'c4e_set_tagline',
+    params: { from: 'data.identidad.headline', source: 'interview' },
+  },
+  produces: {
+    schema: TAGLINE_RESULT_SCHEMA,
+    path: 'tagline',
+    policy: 'sticky' as const,
+  },
+};
+
 // Phase 3 (Q-A): the canonical lifecycle transition for a c4e member is an
 // explicit step inside this workflow. Once `organize` has written the four
 // wiki sections, this node moves the agent from `onboarding` → `member`.
@@ -631,7 +670,7 @@ export const userInterviewProcess: ProcessTemplate = {
     // collect.enlaces.links).
     fields: [
       { key: 'nombre',      label: 'Nombre',       icon: 'user',           required: true,  step: 'identidad' },
-      { key: 'headline',    label: 'Headline',     icon: 'tag',            required: true,  step: 'identidad' },
+      { key: 'headline',    label: 'Tu titular',   icon: 'tag',            required: true,  step: 'identidad' },
       { key: 'ubicacion',   label: 'Ubicación',    icon: 'map-pin',        required: true,  step: 'identidad' },
       { key: 'rol_actual',  label: 'Rol actual',   icon: 'briefcase',      required: true,  step: 'identidad' },
       { key: 'org',         label: 'Organización', icon: 'building-2',                      step: 'identidad' },
@@ -665,6 +704,7 @@ export const userInterviewProcess: ProcessTemplate = {
     researchStep,
     composeStep,
     organizeStep,
+    taglineStep,
     acceptTermsStep,
     becomeMemberStep,
   ],
@@ -675,7 +715,10 @@ export const userInterviewProcess: ProcessTemplate = {
     { from: 'comunidad',   to: 'research' },
     { from: 'research',    to: 'compose' },
     { from: 'compose',     to: 'organize' },
-    { from: 'organize',    to: 'terms_acceptance' },
+    // El titular se guarda justo después de persistir el perfil, y antes de
+    // los T&C: así queda escrito aunque el socio abandone en la aceptación.
+    { from: 'organize',    to: 'tagline' },
+    { from: 'tagline',     to: 'terms_acceptance' },
     { from: 'terms_acceptance', to: 'become_member' },
   ],
 
@@ -712,7 +755,7 @@ export const userInterviewProcess: ProcessTemplate = {
     },
     {
       id: 'research',
-      label: 'Research público',
+      label: 'Investigación pública',
       nodeIds: ['research', 'compose'],
       icon: 'search',
       description:
@@ -722,7 +765,12 @@ export const userInterviewProcess: ProcessTemplate = {
     {
       id: 'organize',
       label: 'Organizar perfil',
-      nodeIds: ['organize'],
+      // `tagline` va en el MISMO bloque que `organize` y no en uno propio: para
+      // el socio son el mismo momento («estoy guardando tu perfil»), y un chip
+      // más en el carril por una escritura de una línea sólo alargaría la
+      // barra. Un nodo sin bloque, en cambio, no es opción: `OnboardPanel` se
+      // autogatea sobre `blocks`.
+      nodeIds: ['organize', 'tagline'],
       icon: 'layout-dashboard',
       description:
         'Guardamos las cuatro secciones en la wiki de tu agente y lo ' +

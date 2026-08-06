@@ -1,8 +1,8 @@
 {
   "name": "@cryptobenkei/c4e",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "benkei": {
-    "engine": "1.11.0"
+    "engine": "1.12.0"
   },
   "description": "c4e agent-template catalog — the Members manager and per-member agent for the c4e community. Each member has their own dedicated agent, reached primarily through the c4e Telegram bot. Ships the `join-community` invite flow and the `user-interview` self-onboarding workflow.",
   "keywords": [

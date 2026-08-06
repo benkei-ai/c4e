@@ -12,10 +12,16 @@
  */
 
 import { newsReputationAction } from './news-reputation.js';
+import { setTaglineAction } from './tagline.js';
 import type { ActionMap } from './ports.js';
 
 export const actions: ActionMap = {
   c4e_news_reputation: newsReputationAction,
+
+  // Saca el titular del socio de la conversación de la entrevista y lo deja
+  // como dato consultable. Ver `tagline.ts` para por qué no vale con que la
+  // entrevista lo escriba en la prosa del perfil.
+  c4e_set_tagline: setTaglineAction,
 
   // Gancho de ciclo de vida, no acción de proceso. El motor lo invoca al
   // cerrar una sesión de lectura del feed (cuando el miembro mueve su cursor),
@@ -34,4 +40,5 @@ export const actions: ActionMap = {
 };
 
 export { runNewsReputation, type NewsReputationResult } from './news-reputation.js';
+export { aUnaLinea, setTaglineAction } from './tagline.js';
 export type { ActionAgent, ActionCtx, ActionHandler, ActionHost, ActionMap, ActionRecord } from './ports.js';

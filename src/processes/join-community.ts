@@ -147,26 +147,31 @@ export const joinCommunityProcess: ProcessTemplate = {
     pluginSlug: 'onboarding',
     launchable: true,
     primary: true,
-    headerLabel: 'Invite a community member',
+    // Rótulos en CASTELLANO, como el resto del catálogo de c4e (`news-updates`
+    // → «Novedades», `news-reputation` → «Recalcular reputación», y las tres
+    // pantallas de `src/ui`). El defecto de la casa es el inglés, pero éste es
+    // el único proceso del club que seguía en inglés y salía así, en medio de
+    // una pantalla enteramente en castellano, ante una comunidad que habla
+    // castellano.
+    headerLabel: 'Invitar a un socio',
     help:
-      'Onboard a new c4e community member: collect their details ' +
-      '(including their Telegram handle), research them publicly, send ' +
-      'the invitation email, and create their member agent the moment ' +
-      'they sign in for the first time.',
+      'Da de alta a un nuevo socio del club: recoge sus datos (incluido su ' +
+      'handle de Telegram), lo investiga en fuentes públicas, le manda el ' +
+      'correo de invitación y crea su agente en cuanto entra por primera vez.',
     launchIcon: 'user-round-plus',
     instructions:
-      'Tell me about the new community member: full name, email, a ' +
-      'one-line "what they do" headline, their Telegram handle (key — c4e ' +
-      'is Telegram-first), and a LinkedIn URL if available.',
+      'Cuéntame quién es el nuevo socio: nombre completo, correo, una línea ' +
+      'que resuma a qué se dedica, su handle de Telegram (importante — en c4e ' +
+      'se entra sobre todo por Telegram) y su LinkedIn si lo tienes.',
     fields: [
-      { key: 'name', label: 'Full name', icon: 'user', required: true, step: 'collect' },
-      { key: 'email', label: 'Email', icon: 'mail', required: true, step: 'collect' },
-      { key: 'headline', label: 'Headline', icon: 'briefcase', required: true, step: 'collect' },
+      { key: 'name', label: 'Nombre completo', icon: 'user', required: true, step: 'collect' },
+      { key: 'email', label: 'Correo', icon: 'mail', required: true, step: 'collect' },
+      { key: 'headline', label: 'A qué se dedica', icon: 'briefcase', required: true, step: 'collect' },
       { key: 'telegramHandle', label: 'Telegram', icon: 'send', required: true, step: 'collect' },
       { key: 'linkedinUrl', label: 'LinkedIn', icon: 'linkedin', step: 'collect' },
-      { key: 'offering', label: 'Offers', icon: 'gift', step: 'collect' },
-      { key: 'lookingFor', label: 'Looking for', icon: 'search', step: 'collect' },
-      { key: 'description', label: 'Description', icon: 'file-text', step: 'collect' },
+      { key: 'offering', label: 'Qué ofrece', icon: 'gift', step: 'collect' },
+      { key: 'lookingFor', label: 'Qué busca', icon: 'search', step: 'collect' },
+      { key: 'description', label: 'Descripción', icon: 'file-text', step: 'collect' },
     ],
   },
   trigger: { initiator: { type: 'self' } },
@@ -218,7 +223,7 @@ export const joinCommunityProcess: ProcessTemplate = {
           collectRef: 'data.collect',
           email: {
             subject:
-              '{{inviterName}} te invita a Chain4Economy (c4e) como miembro',
+              '{{inviterName}} te invita a unirte a Chain4Economy (c4e)',
             html: [
               '<p>Hola {{recipientName}},</p>',
               '<p><strong>{{inviterName}}</strong> te ha invitado a unirte como ' +
@@ -228,11 +233,11 @@ export const joinCommunityProcess: ProcessTemplate = {
                 'finanzas descentralizadas y Web3.</p>',
               '<h3 style="margin:1.2em 0 0.3em 0">Lo que recibes al unirte</h3>',
               '<ul>',
-              '<li><strong>Tu propio agente personal de IA</strong> en c4e — un ' +
+              '<li><strong>Tu agente personal de IA</strong> en c4e — un ' +
                 'asistente privado que mantiene tu perfil y te ayuda a ' +
                 'encontrar a las personas adecuadas dentro de la comunidad.</li>',
-              '<li><strong>Discovery cruzado</strong> con el resto de miembros: ' +
-                'qué hacen, qué ofrecen, qué buscan, en qué proyectos están.</li>',
+              '<li><strong>Conocer al resto de la comunidad</strong>: qué hacen, ' +
+                'qué ofrecen, qué buscan y en qué proyectos andan.</li>',
               '<li><strong>Acceso desde web y, próximamente, Telegram</strong> ' +
                 '— tu agente te acompaña por el canal que prefieras.</li>',
               '</ul>',
@@ -241,13 +246,13 @@ export const joinCommunityProcess: ProcessTemplate = {
               '<li>Haz clic en este enlace y elige tu contraseña:<br>' +
                 '<a href="{{inviteUrl}}">{{inviteUrl}}</a></li>',
               '<li>Tu agente te recibirá con una <strong>breve entrevista de ' +
-                '6 pasos</strong> (nombre, enlaces, qué haces, qué ofreces, ' +
-                'qué buscas) para organizar tu perfil en la comunidad.</li>',
+                'tres pasos</strong> (quién eres, tus enlaces, y qué ofreces y ' +
+                'qué buscas) para armar tu perfil en la comunidad.</li>',
               '<li>A partir de ahí podrás explorar a los demás miembros y ' +
                 'conectar.</li>',
               '</ol>',
-              '<p style="margin-top:1.5em">Si tienes dudas, responde ' +
-                'directamente a este email.</p>',
+              '<p style="margin-top:1.5em">Si tienes cualquier duda, responde ' +
+                'a este correo.</p>',
               '<p>— {{inviterName}} y el equipo de Chain4Economy</p>',
             ].join('\n'),
             text: [
@@ -259,24 +264,24 @@ export const joinCommunityProcess: ProcessTemplate = {
               'regenerativa, finanzas descentralizadas y Web3.',
               '',
               'Lo que recibes al unirte:',
-              '  • Tu propio agente personal de IA en c4e — un asistente',
-              '    privado que mantiene tu perfil y te ayuda a encontrar a',
-              '    las personas adecuadas dentro de la comunidad.',
-              '  • Discovery cruzado con el resto de miembros: qué hacen,',
-              '    qué ofrecen, qué buscan, en qué proyectos están.',
+              '  • Tu agente personal de IA en c4e — un asistente privado',
+              '    que mantiene tu perfil y te ayuda a encontrar a las',
+              '    personas adecuadas dentro de la comunidad.',
+              '  • Conocer al resto de la comunidad: qué hacen, qué ofrecen,',
+              '    qué buscan y en qué proyectos andan.',
               '  • Acceso desde web y, próximamente, Telegram — tu agente',
               '    te acompaña por el canal que prefieras.',
               '',
               'Cómo empezar:',
               '  1. Haz clic en este enlace y elige tu contraseña:',
               '     {{inviteUrl}}',
-              '  2. Tu agente te recibirá con una breve entrevista de 6',
-              '     pasos (nombre, enlaces, qué haces, qué ofreces, qué',
-              '     buscas) para organizar tu perfil en la comunidad.',
+              '  2. Tu agente te recibirá con una breve entrevista de tres',
+              '     pasos (quién eres, tus enlaces, y qué ofreces y qué',
+              '     buscas) para armar tu perfil en la comunidad.',
               '  3. A partir de ahí podrás explorar a los demás miembros y',
               '     conectar.',
               '',
-              'Si tienes dudas, responde directamente a este email.',
+              'Si tienes cualquier duda, responde a este correo.',
               '',
               '— {{inviterName}} y el equipo de Chain4Economy',
             ].join('\n'),
@@ -335,35 +340,35 @@ export const joinCommunityProcess: ProcessTemplate = {
   blocks: [
     {
       id: 'collect-details',
-      label: 'Collect details',
+      label: 'Datos del socio',
       nodeIds: ['collect'],
       icon: 'user-pen',
       description:
-        "Gather the member's name, email, headline, Telegram handle, LinkedIn URL and what they offer / are looking for.",
+        'Nombre, correo, a qué se dedica, handle de Telegram, LinkedIn y qué ofrece / qué busca.',
     },
     {
       id: 'research',
-      label: 'Research',
+      label: 'Investigación',
       nodeIds: ['research'],
       icon: 'search',
       description:
-        'Public-source research into the member — what they do, projects shipped, interests, communities, public writing.',
+        'Búsqueda en fuentes públicas: a qué se dedica, qué ha construido, sus intereses, en qué comunidades está y qué ha publicado.',
     },
     {
       id: 'send-invitation',
-      label: 'Send invitation',
+      label: 'Enviar invitación',
       nodeIds: ['invite', 'wait-first-login'],
       icon: 'mail',
       description:
-        'Create the user row + invitation token, send the email, and wait for them to sign in.',
+        'Crea el usuario y el token de invitación, manda el correo y espera a que entre.',
     },
     {
       id: 'set-up-agent',
-      label: 'Create member agent',
+      label: 'Crear su agente',
       nodeIds: ['create-agent'],
       icon: 'rocket',
       description:
-        "Mint the new member's `member` agent and commit the staged research into its wiki.",
+        'Acuña el agente del nuevo socio y vuelca en su wiki la investigación que quedó preparada.',
     },
   ],
 };

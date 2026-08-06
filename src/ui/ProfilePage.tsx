@@ -29,9 +29,33 @@
  * en un segundo lienzo dibujaría el marco que esa lista existe para evitar — así
  * que aquí sólo se pinta lienzo en los dos estados que NO delegan: cargando y
  * sin ficha.
+ *
+ * ## El botón de la entrevista se pinta AQUÍ, y tiene que ser así
+ *
+ * `MemberDashboard` pinta la entrevista desde el prop `addChild`, que **inyecta
+ * el motor**. Pero sólo lo inyecta `AgentView` — la ficha del agente en
+ * `/a/<slug>`. `MenuPage`, que es quien monta esta página, **no lo pasa**
+ * (comprobado: cero apariciones de `addChild` en `MenuPage.tsx`).
+ *
+ * Resultado antes de esto: un socio recién entrado abría su perfil, su perfil
+ * estaba vacío —que es justo la condición que enciende el botón— y el botón no
+ * existía. La única acción de la pantalla faltaba exactamente para la persona
+ * que la necesitaba, y sin ningún error de por medio. Es el mismo agujero por
+ * el que `MembersDashboard` se quedó sin su «+ Socio» al sustituir al dashboard
+ * genérico.
+ *
+ * Así que la página se pinta su propio botón y se lo pasa a la ficha por el
+ * mismo prop. **No se replica la condición de cuándo mostrarlo**: eso lo sigue
+ * decidiendo `MemberDashboard` (`esMiFicha && profileHtml === ''`), que es
+ * quien tiene el dato del perfil delante. Aquí sólo se provee el botón; si la
+ * entrevista ya está hecha, la ficha simplemente no lo coloca.
+ *
+ * Se arregla en el catálogo y no haciendo que `MenuPage` pase `addChild` a
+ * todo el mundo: eso movería el motor —y con él los cinco tenants— para
+ * resolver el problema de una pantalla de c4e.
  */
 
-import type { CatalogDashboardProps, DashboardAgent } from './host';
+import type { CatalogDashboardProps, DashboardAgent, DashboardHost } from './host';
 import { MemberDashboard } from './MemberDashboard';
 
 /** Lo que devuelve `getMyCopilot`: el agente que posee el usuario de la sesión. */
@@ -114,6 +138,42 @@ function SinFicha({ nombre }: { nombre: string | null }): JSX.Element {
   );
 }
 
+/** El slug del proceso que arma el perfil de un socio. */
+const ENTREVISTA = 'user-interview';
+
+/**
+ * El botón que arranca la entrevista de bienvenida.
+ *
+ * Receta del primitivo `Button` del motor en su variante primaria, copiada
+ * literal del «+ Socio» de `MembersDashboard` — este catálogo es otro paquete y
+ * no puede importar primitivos, así que se copia la receta, no el aspecto.
+ *
+ * Rótulo explícito («Hacer mi entrevista») y no un «+» a secas: el botón sale
+ * en la cabecera de una ficha vacía, y ahí un símbolo no dice qué va a pasar
+ * cuando lo pulses.
+ */
+function BotonEntrevista({
+  host,
+  did,
+  slug,
+}: {
+  host: DashboardHost;
+  did: string;
+  slug: string | null;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void host.launchProcess({ id: did, slug }, ENTREVISTA, host.navigate);
+      }}
+      className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-sidebar-primary px-2.5 text-[13px] font-medium text-sidebar-primary-foreground transition-all hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/15 active:scale-[0.98]"
+    >
+      Hacer mi entrevista
+    </button>
+  );
+}
+
 export function ProfilePage({
   preview,
   host,
@@ -145,5 +205,14 @@ export function ProfilePage({
     slug: copiloto?.slug ?? null,
   };
 
-  return <MemberDashboard agent={miFicha} preview={false} host={host} />;
+  // El botón va SIEMPRE; quien decide si se coloca es `MemberDashboard`, que
+  // sabe si el perfil está vacío. Ver la nota de la cabecera.
+  return (
+    <MemberDashboard
+      agent={miFicha}
+      preview={false}
+      host={host}
+      addChild={<BotonEntrevista host={host} did={miDid} slug={miFicha.slug} />}
+    />
+  );
 }

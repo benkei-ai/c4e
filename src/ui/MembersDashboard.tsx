@@ -48,11 +48,24 @@ interface SocioRow {
   lifecycleStateLabel: string | null;
 }
 
-/** Una invitación cursada que todavía no ha entrado. */
+/**
+ * Una invitación cursada que todavía no ha entrado.
+ *
+ * `token` es la CREDENCIAL: quien lo tiene puede reclamar esa cuenta. Por eso
+ * el motor lo manda con una guarda más estrecha que la de la propia fila —
+ * `listManagerInvitations` sólo lo incluye para un admin o para quien tenga
+ * `execute` sobre el manager, que es el mismo permiso que lanza el alta. Un
+ * socio corriente recibe la fila con `token: null`.
+ *
+ * Este campo llegaba desde el principio y este catálogo no lo declaraba, así
+ * que se descartaba en la frontera de tipos: el dato viajaba y nadie lo usaba.
+ */
 interface InvitacionRow {
   email: string;
   name: string;
   invitedAt: string;
+  role?: string;
+  token?: string | null;
 }
 
 /** Correos del censo entero en UNA llamada (`listChildIdentities`). Fila a fila
@@ -62,10 +75,88 @@ interface IdentidadesPayload {
   byAgent: Record<string, Array<{ provider: string; identifier: string }>>;
 }
 
+/** Los titulares del censo entero en UNA llamada (`listChildRecords`). Mismo
+ *  motivo que los correos, y por eso la ruta del motor es gemela de aquélla. */
+interface TitularesPayload {
+  byAgent: Record<string, Array<{ id: string; fields: Record<string, unknown> }>>;
+}
+
+/** Lo que `me` devuelve, recortado a lo único que esta pantalla mira. */
+interface Yo {
+  user: { role?: string | null } | null;
+}
+
 /** Celda vacía: un guion atenuado. Una celda en blanco se lee como un fallo de
  *  render; un guion se lee como «no consta». */
 function Vacio(): ReactElement {
   return <span className="text-muted-foreground">—</span>;
+}
+
+/**
+ * El enlace de invitación de un pendiente, con su botón de copiar.
+ *
+ * Se pinta la URL entera —recortada por CSS, no por `slice`— y no sólo un
+ * botón: quien manda una invitación a mano necesita poder VER a qué apunta
+ * antes de pegarla en un correo, y un botón mudo obliga a copiar a ciegas.
+ *
+ * **La URL se compone con `window.location.origin`**, no con una base
+ * configurada. Un tenant responde por más de un hostname (c4e atiende en su
+ * dominio público y en el de `benkei.dev`) y el `APP_BASE_URL` del contenedor
+ * es sólo uno de ellos; el origen por el que el operador ya está navegando es,
+ * por construcción, uno que funciona. Es exactamente lo que la ruta del motor
+ * dice que hay que hacer.
+ *
+ * `stopPropagation` porque estas filas no navegan hoy, pero la tabla de al lado
+ * sí y las dos se editan juntas: sin él, el día que esta fila se haga clicable
+ * copiar el enlace también te sacaría de la pantalla.
+ */
+function EnlaceInvitacion({
+  token,
+  onCopiado,
+  onError,
+}: {
+  token: string;
+  onCopiado: () => void;
+  onError: () => void;
+}): ReactElement {
+  const url = `${window.location.origin}/invite/${token}`;
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        className="max-w-[22ch] truncate font-mono text-[11px] text-muted-foreground"
+        title={url}
+      >
+        {url}
+      </span>
+      <button
+        type="button"
+        aria-label="Copiar el enlace de invitación"
+        title="Copiar el enlace de invitación"
+        onClick={(e) => {
+          e.stopPropagation();
+          void navigator.clipboard.writeText(url).then(onCopiado, onError);
+        }}
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/15"
+      >
+        {/* El icono va inline: `host` inyecta cinco miembros y ninguno es una
+            librería de iconos, así que un catálogo dibuja los suyos. Dos hojas
+            solapadas — el gesto universal de copiar. */}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-3.5"
+          aria-hidden="true"
+        >
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      </button>
+    </span>
+  );
 }
 
 /** La receta del primitivo `Badge` del motor (DESIGN.md §4), copiada a mano.
@@ -159,10 +250,15 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
     preview ? null : 'listManagerInvitations',
     preview ? undefined : { managerId: agent.id },
   );
-  const { data: identidades } = useTrpcQuery<IdentidadesPayload>(
-    preview ? null : 'listChildIdentities',
-    preview ? undefined : { parentAgentId: agent.id },
-  );
+  /**
+   * Quién mira. Sólo se lee el rol: la guarda de abajo lo combina con el
+   * permiso sobre el manager para reproducir EXACTAMENTE el criterio que el
+   * motor ya aplica al decidir si manda el token de una invitación
+   * (`ctx.user.role === 'admin' || perms.execute`). Dos criterios distintos —
+   * uno en el servidor y otro aquí — acabarían enseñando una columna vacía o
+   * escondiendo un dato que sí llegó.
+   */
+  const { data: yo } = useTrpcQuery<Yo>(preview ? null : 'me');
   /**
    * Los permisos del que mira, para decidir si se pinta el alta.
    *
@@ -182,12 +278,47 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
     preview ? undefined : { agentId: agent.id },
   );
 
+  /**
+   * Si el que mira puede GESTIONAR el club: administrador del sistema, o
+   * alguien con `execute` sobre este manager (que es quien puede cursar altas).
+   * Es el mismo criterio con el que el motor decide mandar el token, escrito
+   * una sola vez.
+   *
+   * Manda dos cosas: ver los correos y ver el enlace de invitación.
+   */
+  const puedeGestionar =
+    yo?.user?.role === 'admin' || permisos?.execute === true;
+
+  /**
+   * Los correos, y SÓLO si el que mira puede gestionar.
+   *
+   * La consulta va condicionada, no filtrada al pintar: esconder una columna
+   * cuyo dato ya está en el navegador es decoración, no privacidad. Con la
+   * ruta a `null` el socio corriente ni siquiera la pide.
+   *
+   * ⚠️ Esto cierra ESTA pantalla, no el dato. `listChildIdentities` sigue
+   * abierta a cualquiera con lectura sobre el manager —y el club da lectura a
+   * todos—, así que la ficha genérica del agente (`/a/members`) los sigue
+   * enseñando. Cerrarlo de verdad es una guarda en el motor, y esa guarda
+   * afecta a los cinco tenants.
+   */
+  const { data: identidades } = useTrpcQuery<IdentidadesPayload>(
+    preview || !puedeGestionar ? null : 'listChildIdentities',
+    preview ? undefined : { parentAgentId: agent.id },
+  );
+
+  /** Los titulares de todo el censo, en una llamada. Los ve TODO el mundo: son
+   *  lo que cada socio ha elegido contar de sí mismo. */
+  const { data: titulares } = useTrpcQuery<TitularesPayload>(
+    preview ? null : 'listChildRecords',
+    preview ? undefined : { parentAgentId: agent.id, namespace: 'tagline' },
+  );
+
   const socios = useMemo<SocioRow[]>(() => data ?? [], [data]);
   const pendientes = useMemo<InvitacionRow[]>(() => pendientesData ?? [], [pendientesData]);
 
-  /** did → su primer correo. La búsqueda tiene que funcionar con lo que el
-   *  operador tiene en la mano, que muchas veces es la dirección y no el
-   *  nombre: quien busca «adinexa» no sabe que la ficha dice «Arnau». */
+  /** did → su primer correo. Vacío cuando el que mira no puede gestionar,
+   *  porque entonces ni se ha pedido. */
   const correoDe = useMemo<Record<string, string>>(() => {
     const out: Record<string, string> = {};
     for (const [did, lista] of Object.entries(identidades?.byAgent ?? {})) {
@@ -196,6 +327,17 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
     }
     return out;
   }, [identidades]);
+
+  /** did → su titular. Una sola fila por socio (id `current`); se toma la
+   *  primera para no depender de eso al pintar. */
+  const titularDe = useMemo<Record<string, string>>(() => {
+    const out: Record<string, string> = {};
+    for (const [did, filas] of Object.entries(titulares?.byAgent ?? {})) {
+      const texto = filas[0]?.fields.text;
+      if (typeof texto === 'string' && texto.trim() !== '') out[did] = texto.trim();
+    }
+    return out;
+  }, [titulares]);
 
   /** Los estados que EXISTEN en el censo, no una lista fija: un desplegable con
    *  opciones que nadie cumple enseña a desconfiar del filtro. */
@@ -214,18 +356,31 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [socios]);
 
+  /**
+   * La búsqueda cruza nombre, titular y —para quien puede gestionar— correo.
+   *
+   * El titular entra porque ahora es una columna, y una columna que se ve pero
+   * no se busca enseña a no fiarse del buscador. El correo sigue entrando para
+   * quien lo tiene delante: el operador muchas veces recuerda la dirección y no
+   * el nombre —quien busca «adinexa» no sabe que la ficha dice «Arnau»—. Para
+   * el socio corriente `correoDe` está vacío, así que el cruce se cae solo sin
+   * una segunda condición que mantener.
+   */
   const visibles = useMemo<SocioRow[]>(() => {
     const q = busqueda.trim().toLowerCase();
     return socios.filter((s) => {
       if (filtro !== null && (s.lifecycleState ?? '').toLowerCase() !== filtro) return false;
       if (q === '') return true;
-      return [s.name, correoDe[s.did] ?? null]
+      return [s.name, titularDe[s.did] ?? null, correoDe[s.did] ?? null]
         .filter((x): x is string => typeof x === 'string')
         .some((x) => x.toLowerCase().includes(q));
     });
-  }, [socios, filtro, busqueda, correoDe]);
+  }, [socios, filtro, busqueda, correoDe, titularDe]);
 
-  const conCorreo = visibles.filter((s) => (correoDe[s.did] ?? '') !== '').length;
+  /** Para el pie de la tabla. Cuántos tienen ya su titular escrito — que es la
+   *  cifra que dice cuánta gente ha hecho su entrevista. La de correos sólo
+   *  tendría sentido para quien los ve, y ya no es lo que falta saber. */
+  const conTitular = visibles.filter((s) => (titularDe[s.did] ?? '') !== '').length;
 
   // `paginaSegura` en vez de fiarse del estado: si el filtro encoge la lista
   // mientras estás en la página 3, el índice guardado apunta a un tramo que ya
@@ -376,7 +531,7 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
         <div className="flex flex-col gap-4">
           {preview ? (
             <section className="rounded-lg border border-border bg-background px-4 py-4 text-sm text-muted-foreground">
-              Una fila por socio, con su correo, su estado y su fecha de alta. Se rellena al
+              Una fila por socio, con su titular, su estado y su fecha de alta. Se rellena al
               abrirlo fuera del modo vista previa.
             </section>
           ) : loading ? (
@@ -393,21 +548,42 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
                 <thead>
                   <tr>
                     <th>Nombre</th>
-                    <th>Correo</th>
+                    {/* Correo e invitación son de gestión: quien no cursa altas
+                        no los necesita, y el enlace ES la credencial. */}
+                    {puedeGestionar && <th>Correo</th>}
                     <th>Invitado</th>
+                    {puedeGestionar && <th>Invitación</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {pendientes.map((p) => (
                     <tr key={p.email}>
                       <td className="font-medium">{p.name}</td>
-                      <td>{p.email}</td>
+                      {puedeGestionar && <td>{p.email}</td>}
                       <td>{fecha(p.invitedAt)}</td>
+                      {puedeGestionar && (
+                        <td>
+                          {/* Sin token no se inventa una URL: el motor lo omite
+                              a propósito para quien no puede invitar, y pintar
+                              un enlace roto sería peor que decir que no está. */}
+                          {typeof p.token === 'string' && p.token !== '' ? (
+                            <EnlaceInvitacion
+                              token={p.token}
+                              onCopiado={() => host.toast.success('Enlace de invitación copiado.')}
+                              onError={() =>
+                                host.toast.error('No se pudo copiar — el enlace está a la vista.')
+                              }
+                            />
+                          ) : (
+                            <Vacio />
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {pendientes.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="ds-empty">
+                      <td colSpan={puedeGestionar ? 4 : 2} className="ds-empty">
                         No hay invitaciones sin reclamar.
                       </td>
                     </tr>
@@ -422,7 +598,13 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
                   <thead>
                     <tr>
                       <th>Nombre</th>
-                      <th>Correo</th>
+                      {/* El titular sustituye al correo como segunda columna, y
+                          es un cambio de qué cuenta el directorio: la dirección
+                          de alguien no dice quién es, y estaba ocupando el
+                          único sitio donde cabía decirlo. El correo se conserva
+                          para quien gestiona, más a la derecha. */}
+                      <th className="w-[34%]">Titular</th>
+                      {puedeGestionar && <th>Correo</th>}
                       <th>Estado</th>
                       <th>Alta</th>
                     </tr>
@@ -439,6 +621,7 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
                       // tire el estado de la app.
                       const destino = s.slug === null ? null : `/a/${s.slug}`;
                       const correo = correoDe[s.did] ?? null;
+                      const titular = titularDe[s.did] ?? null;
                       return (
                         <tr
                           key={s.did}
@@ -470,7 +653,22 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
                               s.name
                             )}
                           </td>
-                          <td>{correo ?? <Vacio />}</td>
+                          {/* Una línea, recortada por CSS y con el texto entero
+                              en el `title`. Se trunca en vez de partir en dos
+                              renglones porque una fila más alta que las demás
+                              rompe el barrido vertical de la tabla — y el
+                              titular ya se guarda acotado (ver `tagline.ts`),
+                              así que esto es la segunda red, no la primera. */}
+                          <td className="max-w-0">
+                            {titular !== null ? (
+                              <span className="block truncate ds-mute" title={titular}>
+                                {titular}
+                              </span>
+                            ) : (
+                              <Vacio />
+                            )}
+                          </td>
+                          {puedeGestionar && <td>{correo ?? <Vacio />}</td>}
                           <td>
                             <Estado row={s} />
                           </td>
@@ -480,7 +678,7 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
                     })}
                     {visibles.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="ds-empty">
+                        <td colSpan={puedeGestionar ? 5 : 4} className="ds-empty">
                           {socios.length === 0
                             ? 'Todavía no hay socios en el club.'
                             : 'Ningún socio casa con el filtro.'}
@@ -544,7 +742,8 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
                   de {socios.length}
                 </span>
                 <span className="text-muted-foreground">
-                  Con correo <span className="font-semibold tabular-nums text-foreground">{conCorreo}</span>
+                  Con titular{' '}
+                  <span className="font-semibold tabular-nums text-foreground">{conTitular}</span>
                 </span>
                 {/* Las invitaciones sin reclamar se dicen AQUÍ además de en su
                     pestaña: son el hueco entre «a cuántos hemos invitado» y «a

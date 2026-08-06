@@ -124,6 +124,37 @@ const FeedFeedbackRecordSchema = z
   .strict();
 
 /**
+ * El titular del socio: UNA línea que dice quién es. Exactamente una fila, id
+ * `current`.
+ *
+ * Existe porque el dato ya se recogía dos veces —`join-community` pide
+ * `headline` y la entrevista lo vuelve a pedir en su paso `identidad`— y las
+ * dos veces acababa disuelto dentro de la prosa de `profile/summary`. Desde ahí
+ * no hay forma de que una tabla enseñe el titular de 28 socios sin parsear
+ * HTML, así que en la práctica el dato se recogía y se tiraba.
+ *
+ * **Record y no narrative** justo por eso: es un campo que se consulta y se
+ * pinta en una columna, no un texto que lea un LLM. Y una sola fila (como
+ * `feed_state/cursor`) porque una persona tiene un titular, no un historial de
+ * titulares — si algún día hiciera falta ese historial, sería otro namespace.
+ *
+ *   text   — el titular. Una línea; el directorio la trunca, no la parte.
+ *   source — de dónde salió. `interview` lo escribe la entrevista;
+ *            `alta` es lo que puso quien invitó al socio;
+ *            `backfill` es un titular rescatado de una entrevista antigua por
+ *            la migración d26, y avisa de que nadie lo ha revisado desde
+ *            entonces.
+ *   at     — ISO 8601 de cuándo se escribió.
+ */
+const TaglineRecordSchema = z
+  .object({
+    text: z.string().min(1),
+    source: z.enum(['interview', 'alta', 'backfill', 'manual']),
+    at: z.string(),
+  })
+  .strict();
+
+/**
  * Local extension that adds the copilot-dashboard `tutorial` field. The
  * foundation `ChildBlueprintInput` does not declare it yet — the orchestrator
  * reads it opaquely from the registered template. When @benkei-ai/core
@@ -346,6 +377,17 @@ results.`,
     // member through the c4e Telegram bot (the routing layer reads the section).
     { name: 'links', kind: 'narrative', label: 'Links', order: 12 },
     { name: 'telegram', kind: 'narrative', label: 'Telegram', order: 13 },
+
+    // ── el titular ────────────────────────────────────────────────────────
+    // Una línea que resume a esta persona, para la columna del directorio y
+    // para la cabecera de su ficha. Ver `TaglineRecordSchema`.
+    {
+      name: 'tagline',
+      kind: 'record',
+      label: 'Titular',
+      order: 14,
+      recordSchema: TaglineRecordSchema,
+    },
   ],
 
   capabilities: [
