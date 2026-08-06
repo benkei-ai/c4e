@@ -384,13 +384,13 @@ const NewsDashboardImpl: ComponentType<CatalogDashboardProps> = ({ preview, host
             </section>
           ) : (
             <>
-              <section className="overflow-x-auto rounded-lg border border-border bg-card">
-                <table className="w-full text-[13px]">
+              <section className="ds-table-wrap">
+                <table className="ds-table ds-table--top">
                   <thead>
-                    <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <th className="px-3 py-2 font-medium">Noticia</th>
-                      <th className="px-3 py-2 font-medium">Estado</th>
-                      <th className="px-3 py-2 font-medium">Compartida</th>
+                    <tr>
+                      <th>Noticia</th>
+                      <th>Estado</th>
+                      <th>Compartida</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -400,8 +400,8 @@ const NewsDashboardImpl: ComponentType<CatalogDashboardProps> = ({ preview, host
                       // enseñarla dos veces es ruido, así que cae el titular.
                       const tieneTitular = it.title !== '' && it.title !== it.url;
                       return (
-                        <tr key={it.id} className="border-b border-border last:border-0">
-                          <td className="px-3 py-2">
+                        <tr key={it.id}>
+                          <td>
                             <a
                               href={it.url}
                               target="_blank"
@@ -447,12 +447,10 @@ const NewsDashboardImpl: ComponentType<CatalogDashboardProps> = ({ preview, host
                               </p>
                             )}
                           </td>
-                          <td className="px-3 py-2 align-top">
+                          <td>
                             <span className={`${CHIP} ${meta.cls}`}>{meta.label}</span>
                           </td>
-                          <td className="px-3 py-2 align-top tabular-nums">
-                            {fechaCorta(it.sharedAt)}
-                          </td>
+                          <td className="tabular-nums">{fechaCorta(it.sharedAt)}</td>
                         </tr>
                       );
                     })}

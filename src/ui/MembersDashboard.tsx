@@ -388,26 +388,26 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
               No se pudo cargar el censo: {error}
             </section>
           ) : pestana === 'pendientes' ? (
-            <section className="overflow-x-auto rounded-lg border border-border bg-card">
-              <table className="w-full text-[13px]">
+            <section className="ds-table-wrap">
+              <table className="ds-table">
                 <thead>
-                  <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">Nombre</th>
-                    <th className="px-3 py-2 font-medium">Correo</th>
-                    <th className="px-3 py-2 font-medium">Invitado</th>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Correo</th>
+                    <th>Invitado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pendientes.map((p) => (
-                    <tr key={p.email} className="border-b border-border last:border-0">
-                      <td className="px-3 py-2 font-medium">{p.name}</td>
-                      <td className="px-3 py-2">{p.email}</td>
-                      <td className="px-3 py-2">{fecha(p.invitedAt)}</td>
+                    <tr key={p.email}>
+                      <td className="font-medium">{p.name}</td>
+                      <td>{p.email}</td>
+                      <td>{fecha(p.invitedAt)}</td>
                     </tr>
                   ))}
                   {pendientes.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                      <td colSpan={3} className="ds-empty">
                         No hay invitaciones sin reclamar.
                       </td>
                     </tr>
@@ -417,14 +417,14 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
             </section>
           ) : (
             <>
-              <section className="overflow-x-auto rounded-lg border border-border bg-card">
-                <table className="w-full text-[13px]">
+              <section className="ds-table-wrap">
+                <table className="ds-table">
                   <thead>
-                    <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <th className="px-3 py-2 font-medium">Nombre</th>
-                      <th className="px-3 py-2 font-medium">Correo</th>
-                      <th className="px-3 py-2 font-medium">Estado</th>
-                      <th className="px-3 py-2 font-medium">Alta</th>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>Correo</th>
+                      <th>Estado</th>
+                      <th>Alta</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -455,11 +455,13 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
                                   navigate(destino);
                                 }
                           }
-                          className={`border-b border-border last:border-0${
-                            destino === null ? '' : ' cursor-pointer hover:bg-secondary/60'
-                          }`}
+                          // El cursor y el hover de una fila navegable son del
+                          // design system (`.ds-table tbody tr[data-clickable]`),
+                          // no de esta pantalla: aquí sólo se declara EL HECHO de
+                          // que la fila lleva a algún sitio.
+                          data-clickable={destino === null ? undefined : ''}
                         >
-                          <td className="px-3 py-2 font-medium">
+                          <td className="font-medium">
                             {destino !== null ? (
                               <a className="hover:underline" href={destino}>
                                 {s.name}
@@ -468,20 +470,17 @@ const MembersDashboardImpl: ComponentType<CatalogDashboardProps> = ({
                               s.name
                             )}
                           </td>
-                          <td className="px-3 py-2">{correo ?? <Vacio />}</td>
-                          <td className="px-3 py-2">
+                          <td>{correo ?? <Vacio />}</td>
+                          <td>
                             <Estado row={s} />
                           </td>
-                          <td className="px-3 py-2">{fecha(s.createdAt)}</td>
+                          <td>{fecha(s.createdAt)}</td>
                         </tr>
                       );
                     })}
                     {visibles.length === 0 && (
                       <tr>
-                        <td
-                          colSpan={4}
-                          className="px-3 py-8 text-center text-sm text-muted-foreground"
-                        >
+                        <td colSpan={4} className="ds-empty">
                           {socios.length === 0
                             ? 'Todavía no hay socios en el club.'
                             : 'Ningún socio casa con el filtro.'}
