@@ -1,6 +1,6 @@
 {
   "name": "@cryptobenkei/c4e",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "benkei": {
     "engine": "1.11.0"
   },
