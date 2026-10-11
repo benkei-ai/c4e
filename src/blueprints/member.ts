@@ -16,27 +16,42 @@ import {
   ACTION_FIRST,
   CHILD_RULES,
   type ChildBlueprintInput,
+  ProjectBase,
   compose,
 } from '@benkei-ai/core';
 import { z } from 'zod';
 
 /**
- * Typed schema for one project a member is working on. Drives the deterministic
- * "Projects" table on the member's dashboard — title is mandatory, summary +
- * status mandatory for kanban grouping, the rest optional.
+ * Un proyecto en el que trabaja un socio. Alimenta la tabla «Projects» de su
+ * dashboard.
+ *
+ * ## Sobre `ProjectBase` desde el 2026-10-11, y qué se perdía
+ *
+ * Era un `z.object(...).strict()` con ocho campos, de los cuales siete son
+ * literalmente los de la fundación. El octavo era el problema: declaraba
+ * `status: ['idea','active','paused','done','archived']` — vocabulario propio,
+ * donde la plataforma dice `lead · active · paused · done · cancelled`.
+ *
+ * Un vocabulario propio no es gratis: el kanban de cartera del motor y el
+ * índice del menú agrupan por `status`, así que `idea` y `archived` eran dos
+ * columnas que ninguna pantalla compartida sabía pintar. Es el mismo fallo que
+ * ya costó caro en hulahoop, donde su `backlog·in-progress·blocked` dejó la
+ * pestaña Tareas diciendo «No tasks pending» con las tareas en disco.
+ *
+ * **Migrar no pierde ni un dato, y eso está medido, no supuesto.** En prod el
+ * 2026-10-11 el namespace tiene UN registro, con `status: 'active'`; `idea` y
+ * `archived` tienen **cero** en los 29 agentes de socio. Eran valores
+ * declarados que nadie escribió nunca.
+ *
+ * Y `summary` deja de ser obligatorio: la base lo tiene opcional, y exigirlo
+ * aquí impedía dar de alta un proyecto antes de saber describirlo.
+ *
+ * Se mantiene `.strict()`, que aquí sí es correcto: `projects` de un socio no
+ * es un namespace que el motor escriba —no hay triaje de correo sobre un
+ * socio— así que una clave inesperada es un error del catálogo, no un campo
+ * nuevo de la plataforma.
  */
-const ProjectRecordSchema = z
-  .object({
-    title: z.string().min(1),
-    summary: z.string().min(1),
-    status: z.enum(['idea', 'active', 'paused', 'done', 'archived']),
-    budget: z.number().nonnegative().optional(),
-    startedAt: z.string().optional(),
-    endedAt: z.string().optional(),
-    links: z.array(z.string().url()).optional(),
-    tags: z.array(z.string()).optional(),
-  })
-  .strict();
+const ProjectRecordSchema = ProjectBase.strict();
 
 /**
  * Typed schema for one of a member's skills. Drives the deterministic "Skills"
